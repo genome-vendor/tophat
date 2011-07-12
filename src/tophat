@@ -609,6 +609,7 @@ class TopHatParams:
                                          "insertions=",
                                          "deletions=",
                                          "no-sort-bam",
+                                         "best",
                                          "no-convert-bam"])
         except getopt.error, msg:
             raise Usage(msg)
