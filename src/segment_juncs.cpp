@@ -43,8 +43,8 @@ using namespace seqan;
 using namespace std;
 using namespace __gnu_cxx;
 
-// daehwan
-bool bDebug = false;
+// daehwan //geo
+//#define B_DEBUG 1
 
 void print_usage()
 {
@@ -58,6 +58,7 @@ static const int max_cov_juncs = 5000000;
 static const int max_seg_juncs = 10000000;
 int max_microexon_stretch = 2000;
 int butterfly_overhang = 6;
+int min_cov_length = 20;
 
 void get_seqs(istream& ref_stream,
 			  RefSequenceTable& rt,
@@ -567,9 +568,8 @@ void store_read_mers(FZPipe& reads_file, size_t half_splice_mer_len)
 	{
 		num_extensions += extensions[i].size();
 	}
-	fprintf (stderr, "Total extensions: %lu\n", (long unsigned int)num_extensions);
-	//rewind(reads_file);
-    reads_file.rewind();
+	//fprintf (stderr, "Total extensions: %lu\n", (long unsigned int)num_extensions);
+  reads_file.rewind();
 }
 
 //void index_read_mers(vector<FILE*> reads_files,
@@ -726,137 +726,135 @@ struct DnaSpliceStrings
 
 struct IntronMotifs
 {
-	IntronMotifs(uint32_t rid) : ref_id(rid) {}
-	uint32_t ref_id;
+  IntronMotifs(uint32_t rid) : ref_id(rid) {}
+  uint32_t ref_id;
 	
-
-	
-	vector<pair<size_t, DnaSpliceStrings> > fwd_donors;
-	vector<pair<size_t, DnaSpliceStrings> > fwd_acceptors;
-	vector<pair<size_t, DnaSpliceStrings> > rev_donors;
-	vector<pair<size_t, DnaSpliceStrings> > rev_acceptors;	
-	
-	void unique(vector<pair<size_t, DnaSpliceStrings> >& f)
-	{
-		sort(f.begin(), f.end());
-		vector<pair<size_t, DnaSpliceStrings> >::iterator i = std::unique(f.begin(), f.end());
-		f.erase(i, f.end());
-	}
-	
-	void unique()
-	{
-		unique(fwd_donors);
-		unique(fwd_acceptors);
-		unique(rev_donors);
-		unique(rev_acceptors);
-	}
-	
-	void attach_mers(RefSequenceTable::Sequence& ref_str)
-	{
-		attach_upstream_mers(ref_str, fwd_donors);
-		attach_upstream_mers(ref_str, rev_acceptors);
-		
-		attach_downstream_mers(ref_str, rev_donors);
-		attach_downstream_mers(ref_str, fwd_acceptors);		
-	}
-	
-	void attach_upstream_mers(RefSequenceTable::Sequence& ref_str,
-							  vector<pair<size_t, DnaSpliceStrings> >& dinucs)
-	{
-		for (size_t i = 0; i < dinucs.size(); ++i)
-		{
-			size_t pos = dinucs[i].first;
-			int half_splice_mer_len = 32;
-
-			if (color)
-			  {
-			    if (pos <= (size_t)half_splice_mer_len+1 || pos >= length(ref_str))
-			      continue; 
-
-			    Dna5String seg_str = seqan::infixWithLength(ref_str,
-									pos - half_splice_mer_len - 1,
-									half_splice_mer_len + 1);
-			    stringstream ss(stringstream::in | stringstream::out);
-			    string s;
-			    ss << seg_str;
-			    ss >> s;
-			    
-			    string col_seg_str = convert_bp_to_color(s, true);
-			    uint64_t idx = colorstr_to_idx(col_seg_str);
-
-			    dinucs[i].second.fwd_string = idx;
-			    dinucs[i].second.rev_string = rc_color_str(idx);
-			    dinucs[i].second.first_in_string = s[1];
-			    dinucs[i].second.last_in_string = s[half_splice_mer_len];
-			  }
-			else
-			  {
-			    if (pos <= (size_t)half_splice_mer_len || pos >= length(ref_str))
-			      continue; 
-
-			    Dna5String seg_str = seqan::infixWithLength(ref_str,
-									pos - half_splice_mer_len,
-									half_splice_mer_len);
-
-			    stringstream ss(stringstream::in | stringstream::out);
-			    string s;
-			    ss << seg_str;
-			    ss >> s;
-			    uint64_t idx = dna5str_to_idx(s);
-			    dinucs[i].second.fwd_string = idx;
-			    dinucs[i].second.rev_string = rc_dna_str(idx);
-			  }
-		}
-	}
+  vector<pair<size_t, DnaSpliceStrings> > fwd_donors;
+  vector<pair<size_t, DnaSpliceStrings> > fwd_acceptors;
+  vector<pair<size_t, DnaSpliceStrings> > rev_donors;
+  vector<pair<size_t, DnaSpliceStrings> > rev_acceptors;	
   
+  void unique(vector<pair<size_t, DnaSpliceStrings> >& f)
+  {
+    sort(f.begin(), f.end());
+    vector<pair<size_t, DnaSpliceStrings> >::iterator i = std::unique(f.begin(), f.end());
+    f.erase(i, f.end());
+  }
+  
+  void unique()
+  {
+    unique(fwd_donors);
+    unique(fwd_acceptors);
+    unique(rev_donors);
+    unique(rev_acceptors);
+  }
+  
+  void attach_mers(RefSequenceTable::Sequence& ref_str)
+  {
+    attach_upstream_mers(ref_str, fwd_donors);
+    attach_upstream_mers(ref_str, rev_acceptors);
+    
+    attach_downstream_mers(ref_str, rev_donors);
+    attach_downstream_mers(ref_str, fwd_acceptors);		
+  }
+  
+  void attach_upstream_mers(RefSequenceTable::Sequence& ref_str,
+			    vector<pair<size_t, DnaSpliceStrings> >& dinucs)
+  {
+    for (size_t i = 0; i < dinucs.size(); ++i)
+      {
+	size_t pos = dinucs[i].first;
+	int half_splice_mer_len = 32;
 	
-	void attach_downstream_mers(RefSequenceTable::Sequence& ref_str,
-								vector<pair<size_t, DnaSpliceStrings> >& dinucs)
-	{
-		for (size_t i = 0; i < dinucs.size(); ++i)
-		{
-			size_t pos = dinucs[i].first;
-			
-			int half_splice_mer_len = 32;
-			
-			if (pos + 2 + half_splice_mer_len >= length(ref_str))
-				continue; 
-
-			if (color)
-			  {
-			    Dna5String seg_str = seqan::infixWithLength(ref_str,
-									pos + 2 - 1,
-									half_splice_mer_len + 1);
-			    stringstream ss(stringstream::in | stringstream::out);
-			    string s;
-			    ss << seg_str;
-			    ss >> s;
-
-			    string col_seg_str = convert_bp_to_color(s, true);
-			    uint64_t idx = colorstr_to_idx(col_seg_str);
-
-			    dinucs[i].second.fwd_string = idx;
-			    dinucs[i].second.rev_string = rc_color_str(idx);
-			    dinucs[i].second.first_in_string = s[1];
-			    dinucs[i].second.last_in_string = s[half_splice_mer_len];
-			  }
-			else
-			  {
-			    Dna5String seg_str = seqan::infixWithLength(ref_str,
-									pos + 2,
-									half_splice_mer_len);
-			    
-			    stringstream ss(stringstream::in | stringstream::out);
-			    string s;
-			    ss << seg_str;
-			    ss >> s;
-			    uint64_t idx = dna5str_to_idx(s);
-
-			    dinucs[i].second.fwd_string = idx;
-			    dinucs[i].second.rev_string = rc_dna_str(idx);
-			  }
-		}
-	}
+	if (color)
+	  {
+	    if (pos <= (size_t)half_splice_mer_len+1 || pos >= length(ref_str))
+	      continue; 
+	    
+	    Dna5String seg_str = seqan::infixWithLength(ref_str,
+							pos - half_splice_mer_len - 1,
+							half_splice_mer_len + 1);
+	    stringstream ss(stringstream::in | stringstream::out);
+	    string s;
+	    ss << seg_str;
+	    ss >> s;
+	    
+	    string col_seg_str = convert_bp_to_color(s, true);
+	    uint64_t idx = colorstr_to_idx(col_seg_str);
+	    
+	    dinucs[i].second.fwd_string = idx;
+	    dinucs[i].second.rev_string = rc_color_str(idx);
+	    dinucs[i].second.first_in_string = s[1];
+	    dinucs[i].second.last_in_string = s[half_splice_mer_len];
+	  }
+	else
+	  {
+	    if (pos <= (size_t)half_splice_mer_len || pos >= length(ref_str))
+	      continue; 
+	    
+	    Dna5String seg_str = seqan::infixWithLength(ref_str,
+							pos - half_splice_mer_len,
+							half_splice_mer_len);
+	    
+	    stringstream ss(stringstream::in | stringstream::out);
+	    string s;
+	    ss << seg_str;
+	    ss >> s;
+	    uint64_t idx = dna5str_to_idx(s);
+	    dinucs[i].second.fwd_string = idx;
+	    dinucs[i].second.rev_string = rc_dna_str(idx);
+	  }
+      }
+  }
+  
+  
+  void attach_downstream_mers(RefSequenceTable::Sequence& ref_str,
+			      vector<pair<size_t, DnaSpliceStrings> >& dinucs)
+  {
+    for (size_t i = 0; i < dinucs.size(); ++i)
+      {
+	size_t pos = dinucs[i].first;
+	
+	int half_splice_mer_len = 32;
+	
+	if (pos + 2 + half_splice_mer_len >= length(ref_str))
+	  continue; 
+	
+	if (color)
+	  {
+	    Dna5String seg_str = seqan::infixWithLength(ref_str,
+							pos + 2 - 1,
+							half_splice_mer_len + 1);
+	    stringstream ss(stringstream::in | stringstream::out);
+	    string s;
+	    ss << seg_str;
+	    ss >> s;
+	    
+	    string col_seg_str = convert_bp_to_color(s, true);
+	    uint64_t idx = colorstr_to_idx(col_seg_str);
+	    
+	    dinucs[i].second.fwd_string = idx;
+	    dinucs[i].second.rev_string = rc_color_str(idx);
+	    dinucs[i].second.first_in_string = s[1];
+	    dinucs[i].second.last_in_string = s[half_splice_mer_len];
+	  }
+	else
+	  {
+	    Dna5String seg_str = seqan::infixWithLength(ref_str,
+							pos + 2,
+							half_splice_mer_len);
+	    
+	    stringstream ss(stringstream::in | stringstream::out);
+	    string s;
+	    ss << seg_str;
+	    ss >> s;
+	    uint64_t idx = dna5str_to_idx(s);
+	    
+	    dinucs[i].second.fwd_string = idx;
+	    dinucs[i].second.rev_string = rc_dna_str(idx);
+	  }
+      }
+  }
 };
 
 struct PackedSplice
@@ -1618,7 +1616,7 @@ struct RecordExtendableJuncs
 	    char first_in_downstream = right_sites[R].second.first_in_string;
 	    uint64_t rc_upstream_dna_str = left_sites[L].second.rev_string;
 	    uint64_t rc_downstream_dna_str = right_sites[R].second.rev_string;
-	    
+
 	    if (extendable_junction(upstream_dna_str,
 				    downstream_dna_str, splice_mer_len, 7, false,
 				    last_in_upstream, first_in_downstream) ||
@@ -2149,10 +2147,13 @@ void juncs_from_ref_segs(RefSequenceTable& rt,
             continue;
         
         DnaString org_seg_str = seqan::infix(*ref_str, seg.left + left_color_offset, seg.right + right_color_offset);
-
 	String<char> seg_str;
 	assign(seg_str, org_seg_str);
 
+	#ifdef B_DEBUG2
+   cout << "coord: " << seg.left << " " << seg.right << endl;
+	    //<< "seg_str: " << seg_str << endl;
+  #endif
 	if (color)
 	  {
 	    bool remove_primer = true;
@@ -2211,22 +2212,21 @@ void juncs_from_ref_segs(RefSequenceTable& rt,
 	      }
 
 	    // daehwan
-	    if (bDebug)
-	      {
-		cout << "antisense: " << (seg.antisense ? "-" : "+") << endl
-		     << seqan::infix(seg_str, 0, segment_length) << " "
-		     << seqan::infix(seg_str, length(seg_str) - segment_length, length(seg_str)) << endl
-		     << seg.support_read << endl
-		     << 0 << " - " << to << endl;
+      #ifdef B_DEBUG2
+      cout << "antisense: " << (seg.antisense ? "-" : "+") << endl
+           << seqan::infix(seg_str, 0, segment_length) << " "
+           << seqan::infix(seg_str, length(seg_str) - segment_length, length(seg_str)) << endl
+           << seg.support_read << endl
+           << 0 << " - " << to << endl;
 
-		for (unsigned int i = 0; i < read_len; ++i)
-		  cout << (int)left_mismatches[i];
-		cout << "\t";
+      for (unsigned int i = 0; i < read_len; ++i)
+        cout << (int)left_mismatches[i];
+      cout << "\t";
 
-		for (unsigned int i = 0; i < read_len; ++i)
-		  cout << (int)right_mismatches[i];
-		cout << endl;		
-	      }
+      for (unsigned int i = 0; i < read_len; ++i)
+        cout << (int)right_mismatches[i];
+      cout << endl;
+      #endif
 	  }
 
 	if (seg.points_where == POINT_DIR_BOTH)
@@ -2249,13 +2249,11 @@ void juncs_from_ref_segs(RefSequenceTable& rt,
 		      left_mismatch = left_mismatches[i-1];
 		    
 		    // daehwan
-		    if (bDebug)
-		      {
+#ifdef B_DEBUG2
 			cout << "i: " << i << endl
 			     << "mismatches: " << (int)left_mismatch
 			     << " - " << (int)right_mismatches[i] << endl;
-		      }
-
+#endif
 		    if (left_mismatch + right_mismatches[i] <= 2)
 		      {
 			size_t pos = length(seg_str) - (read_len - i) - 2;
@@ -2273,10 +2271,9 @@ void juncs_from_ref_segs(RefSequenceTable& rt,
 			      }
 
 			    // daehwan
-			    if (bDebug)
-			      {
-				cout << curr << ":" << partner << " added" << endl;
-			      }
+        #ifdef B_DEBUG2
+				  cout << curr << ":" << partner << " added" << endl;
+        #endif
 			  }
 		      }
 		  }
@@ -2292,8 +2289,7 @@ void juncs_from_ref_segs(RefSequenceTable& rt,
             for (size_t i = 0; i <= to; ++i)
 	      {
                 // Look at a slice of the reference without creating a copy.
-                DnaString curr = seqan::infix(seg_str, i - left_color_offset, i + 2 - left_color_offset);
-                
+                DnaString curr = seqan::infix(org_seg_str, i - left_color_offset, i + 2 - left_color_offset);
                 if (curr == acceptor_dinuc && !skip_fwd)
 		  motifs.fwd_acceptors.push_back(make_pair(seg.left + i, DnaSpliceStrings(0,0)));
                 else if (curr == rev_donor_dinuc && !skip_rev)
@@ -2306,8 +2302,7 @@ void juncs_from_ref_segs(RefSequenceTable& rt,
             for (size_t i = 0; i <= to; ++i)
 	      {
                 // Look at a slice of the reference without creating a copy.
-                DnaString curr = seqan::infix(seg_str, i - left_color_offset, i + 2 - left_color_offset);
-                
+                DnaString curr = seqan::infix(org_seg_str, i - left_color_offset, i + 2 - left_color_offset);
                 if (curr == donor_dinuc && !skip_fwd)
 		  motifs.fwd_donors.push_back(make_pair(seg.left + i, DnaSpliceStrings(0,0)));
                 else if (curr == rev_acceptor_dinuc && !skip_rev)
@@ -2343,7 +2338,7 @@ void juncs_from_ref_segs(RefSequenceTable& rt,
         vector<pair<size_t, DnaSpliceStrings> >& fwd_acceptors = motifs.fwd_acceptors;
         vector<pair<size_t, DnaSpliceStrings> >& rev_acceptors = motifs.rev_acceptors;
         vector<pair<size_t, DnaSpliceStrings> >& rev_donors = motifs.rev_donors;
-        
+
         //const char* ref_name = rt.get_name(motif_itr->second.ref_id);
         
         JunctionRecorder recorder;
@@ -2467,7 +2462,7 @@ void detect_small_insertion(RefSequenceTable& rt,
 
 	RefSequenceTable::Sequence* ref_str = rt.get_seq(leftHit.ref_id());
 	if(!ref_str){
-		fprintf(stderr, "Error in accessing sequence record\n");
+		fprintf(stderr, "Error accessing sequence record\n");
 	}else{
 		size_t read_length = seqan::length(read_sequence);
 		int begin_offset = 0;
@@ -2547,7 +2542,7 @@ void detect_small_deletion(RefSequenceTable& rt,
 
 	RefSequenceTable::Sequence* ref_str = rt.get_seq(leftHit.ref_id());
 	if(!ref_str){
-		fprintf(stderr, "Error in accessing sequence record\n");
+		fprintf(stderr, "Error accessing sequence record\n");
 	}else{
 		int begin_offset = 0;
 		int end_offset = 0;
@@ -2847,20 +2842,21 @@ void find_gaps(RefSequenceTable& rt,
 	  
 	  if (!found_right_partner && (found_distant_right_partner || found_right_right_partner))
 	    {
+	      const int look_bp = 8;
 	      size_t color_offset = color ? 1 : 0;
 	      
 	      string support_read;
 	      if (found_distant_right_partner)
-		support_read = seq.substr(color_offset + (s+1) * segment_length - 5, 10);
+		support_read = seq.substr(color_offset + (s+1) * segment_length - look_bp, look_bp * 2);
 	      else
-		support_read = seq.substr(color_offset + (s+1) * segment_length - 5, segment_length + 10);
+		support_read = seq.substr(color_offset + (s+1) * segment_length - look_bp, segment_length + look_bp * 2);
 
 	      BowtieHit& d_bh = found_distant_right_partner ? dr_bh : rr_bh;
 	      if (!bh.antisense_align())
 		{
 		  RefSeg right_seg(bh.ref_id(), POINT_DIR_BOTH, bh.antisense_align(), read, 0, 0, support_read);
-		  right_seg.left = max(0, bh.right() - 5);
-		  right_seg.right = d_bh.left() + 5;
+		  right_seg.left = max(0, bh.right() - look_bp);
+		  right_seg.right = d_bh.left() + look_bp;
 		  expected_don_acc_windows.push_back(right_seg);
 		}
 	      else
@@ -2871,21 +2867,21 @@ void find_gaps(RefSequenceTable& rt,
 		    reverse_complement(support_read);
 		  
 		  RefSeg left_seg(bh.ref_id(), POINT_DIR_BOTH, bh.antisense_align(), read, 0, 0, support_read);
-		  left_seg.left = d_bh.right() - 5;
-		  left_seg.right = bh.left() + 5; // num allowed bowtie mismatches
+		  left_seg.left = d_bh.right() - look_bp;
+		  left_seg.right = bh.left() + look_bp;
 		  expected_don_acc_windows.push_back(left_seg);	
 		}
 	      
 	      // daehwan
-	      if (bDebug)
-		{
-		  cout << (bh.antisense_align() ? "-" : "+") << endl
+      #ifdef B_DEBUG2
+		  cout << "insert id: " << bh.insert_id() << endl
+		       << (bh.antisense_align() ? "-" : "+") << endl
 		       << seq << endl
 		       << "(" << s << ") - " << support_read << endl;
-		}
+      #endif
 	    }
-	}      
-    }
+	   }
+    } //for each hits_for_read
 
   juncs_from_ref_segs<RecordSegmentJuncs>(rt, 
 				      expected_don_acc_windows, 
@@ -3102,7 +3098,7 @@ void look_for_hit_group(RefSequenceTable& rt,
 			vector<HitStream>& seg_files,
 			int curr_file,
 			uint64_t insert_id,
-			vector<HitsForRead>& hits_for_read,
+			vector<HitsForRead>& hits_for_read, //<-- collecting segment hits for this read
 			std::set<Junction, skip_count_lt>& juncs,
 			std::set<Deletion>& deletions,
 			std::set<Insertion>& insertions,
@@ -3117,9 +3113,10 @@ void look_for_hit_group(RefSequenceTable& rt,
 	uint64_t next_group_id = hit_stream.next_group_id();
 	uint32_t next_order = unmapped_reads.observation_order(next_group_id);
 	  // If we would have seen the hits by now, stop looking in this stream,
-	  // but forward the search if possible.
+	  // but forward the search to the next (lower) segment if possible.
 	if (order < next_order || next_group_id == 0) {
 		 if (curr_file > 0) {
+		   //look for next (lower) segment mappings for this read
 			 look_for_hit_group(rt,
 			  reads_file,
 			  reads_file_for_segment_search,
@@ -3264,15 +3261,15 @@ bool process_next_hit_group(RefSequenceTable& rt,
 			    FZPipe&  reads_file_for_indel_discovery,
 			    ReadTable& unmapped_reads,
 			    vector<HitStream>& seg_files, 
-			    size_t curr_file,
+			    size_t last_file_idx,
 			    std::set<Junction, skip_count_lt>& juncs,
 			    std::set<Deletion>& deletions,
 			    std::set<Insertion>& insertions,
 			    eREAD read)
 {
-  HitStream& curr = seg_files[curr_file];
+  HitStream& last_segmap_hitstream = seg_files[last_file_idx];
   HitsForRead hit_group;
-  bool result = curr.next_read_hits(hit_group);
+  bool result = last_segmap_hitstream.next_read_hits(hit_group);
   vector<HitsForRead> hits_for_read(seg_files.size());
   hits_for_read.back() = hit_group;
 
@@ -3282,7 +3279,7 @@ bool process_next_hit_group(RefSequenceTable& rt,
 		     reads_file_for_indel_discovery,
 		     unmapped_reads, 
 		     seg_files, 
-		     (int)curr_file - 1,
+		     (int)last_file_idx - 1,
 		     hit_group.insert_id,
 		     hits_for_read,
 		     juncs,
@@ -3312,50 +3309,55 @@ uint8_t get_cov(const vector<uint8_t>& cov, uint32_t c)
 	return v;
 }
 
+void build_coverage_map(ReadTable& it, RefSequenceTable& rt,
+    vector<FZPipe*>& seg_files, map<uint32_t, vector<bool> >& coverage_map) {
+ if (!coverage_map.empty()) return;
+ BowtieHitFactory hit_factory(it,rt);
+
+ for (size_t f = 0; f < seg_files.size(); ++f)
+   {
+     //fprintf(stderr, "Adding hits from segment file %d to coverage map\n", (int)f);
+     seg_files[f]->rewind();
+     FILE* fp = seg_files[f]->file;
+     HitStream hs(fp, &hit_factory, false, false, false);
+     HitsForRead hit_group;
+     while (hs.next_read_hits(hit_group))
+     {
+       for (size_t h = 0; h < hit_group.hits.size(); ++h)
+         {
+           BowtieHit& bh = hit_group.hits[h];
+
+           pair<map<uint32_t, vector<bool> >::iterator, bool> ret =
+               coverage_map.insert(make_pair(bh.ref_id(), vector<bool>()));
+           vector<bool>& ref_cov = ret.first->second;
+
+           size_t right_extent = bh.right();
+
+           if (right_extent >= ref_cov.size())
+           {
+             ref_cov.resize(right_extent + 1, 0);
+           }
+
+           for (uint32_t c = (uint32_t)bh.left(); c < (uint32_t)bh.right(); ++c)
+           {
+             ref_cov[c] = true;
+             //if (ref_cov[c]<255) ref_cov[c]++;
+           }
+         }
+     } //while next_read_hits
+   }
+}
+
 void pair_covered_sites(ReadTable& it,
 			RefSequenceTable& rt,
 			vector<FZPipe*>& seg_files,
 			std::set<Junction, skip_count_lt>& cov_juncs,
+			map<uint32_t, vector<bool> >& coverage_map,
 			size_t half_splice_mer_len)
 {
-  BowtieHitFactory hit_factory(it,rt);
-  map<uint32_t, vector<bool> > coverage_map;
   vector<RefSeg> expected_look_left_windows;
   vector<RefSeg> expected_look_right_windows;
-  
-  for (size_t f = 0; f < seg_files.size(); ++f)
-    {
-      fprintf(stderr, "Adding hits from segment file %d to coverage map\n", (int)f);
-      seg_files[f]->rewind();
-      FILE* fp = seg_files[f]->file;
-      //rewind(fp);
-      HitStream hs(fp, &hit_factory, false, false, false);
-      
-      HitsForRead hit_group;
-      while (hs.next_read_hits(hit_group))
-	{
-	  for (size_t h = 0; h < hit_group.hits.size(); ++h)
-	    {
-	      BowtieHit& bh = hit_group.hits[h];
-	      
-	      pair<map<uint32_t, vector<bool> >::iterator, bool> ret = 
-		coverage_map.insert(make_pair(bh.ref_id(), vector<bool>()));
-	      vector<bool>& ref_cov = ret.first->second;
-	      
-	      size_t right_extent = bh.right();
-	      
-	      if (right_extent >= ref_cov.size())
-		{
-		  ref_cov.resize(right_extent + 1, 0);
-		}
-	      
-	      for (uint32_t c = (uint32_t)bh.left(); c < (uint32_t)bh.right(); ++c)
-		{
-		  ref_cov[c] = true;
-		}
-	    }
-	}
-    }
+  build_coverage_map(it,rt, seg_files, coverage_map);
   
   static const int extend = 45;
   int num_islands = 0;
@@ -3372,38 +3374,37 @@ void pair_covered_sites(ReadTable& it,
       
       size_t island_left_edge = 0;
       for (size_t c = 1; c < cov.size(); ++c)
-	{
-	  if (cov[c])
-	    {
-	      cov_bases++;
-	      if (!cov[c - 1])
-		{
-		  num_islands += 1;
-		  
-		  int edge = (int)c - extend;
-		  edge = max(edge, 0);
-		  island_left_edge = edge;
-		}
-	    }
-	  else
-	    {
-	      if (cov[c - 1])
-		{
-		  expected_don_acc_windows.push_back(RefSeg(itr->first,
-							    POINT_DIR_LEFT,
-							    false, /* not important */
-							    READ_DONTCARE,
-							    island_left_edge,
-							    c + extend));
-		  expected_don_acc_windows.push_back(RefSeg(itr->first,
-							    POINT_DIR_RIGHT,
-							    false, /* not important */
-							    READ_DONTCARE,
-							    island_left_edge,
-							    c + extend));	
-		}
-	    }
-	}
+      {
+        if (cov[c])
+          {
+            cov_bases++;
+            if (!cov[c - 1])
+            {
+              num_islands += 1;
+              int edge = (int)c - extend;
+              edge = max(edge, 0);
+              island_left_edge = edge;
+            }
+          }
+        else
+          {
+            if (cov[c - 1])
+            {
+              expected_don_acc_windows.push_back(RefSeg(itr->first,
+                          POINT_DIR_LEFT,
+                          false, /* not important */
+                          READ_DONTCARE,
+                          island_left_edge,
+                          c + extend));
+              expected_don_acc_windows.push_back(RefSeg(itr->first,
+                          POINT_DIR_RIGHT,
+                          false, /* not important */
+                          READ_DONTCARE,
+                          island_left_edge,
+                          c + extend));
+            }
+          }
+      }
     }
   fprintf(stderr, "Found %d islands covering %ld bases\n", num_islands, (long int)cov_bases);
   
@@ -3425,50 +3426,15 @@ void capture_island_ends(ReadTable& it,
 			 //vector<FILE*>& seg_files,
 			 vector<FZPipe*>& seg_files,
 			 std::set<Junction, skip_count_lt>& cov_juncs,
+			  map<uint32_t, vector<bool> >& coverage_map,
 			 size_t half_splice_mer_len)
 {
   //static int island_repeat_tolerance = 10;
-  BowtieHitFactory hit_factory(it,rt);
-  map<uint32_t, vector<bool> > coverage_map;
   vector<RefSeg> expected_look_left_windows;
   vector<RefSeg> expected_look_right_windows;
+  build_coverage_map(it, rt, seg_files, coverage_map);
   
-  for (size_t f = 0; f < seg_files.size(); ++f)
-    {
-      fprintf(stderr, "Adding hits from segment file %d to coverage map\n", (int)f);
-      seg_files[f]->rewind();
-      FILE* fp = seg_files[f]->file;
-      //rewind(fp);
-      HitStream hs(fp, &hit_factory, false, false, false);
-      
-      HitsForRead hit_group;
-      while (hs.next_read_hits(hit_group))
-	{
-	  for (size_t h = 0; h < hit_group.hits.size(); ++h)
-	    {
-	      BowtieHit& bh = hit_group.hits[h];
-	      
-	      pair<map<uint32_t, vector<bool> >::iterator, bool> ret = 
-		coverage_map.insert(make_pair(bh.ref_id(), vector<bool>()));
-	      vector<bool>& ref_cov = ret.first->second;
-	      
-	      size_t right_extent = bh.right();
-	      
-	      if (right_extent >= ref_cov.size())
-		{
-		  ref_cov.resize(right_extent + 1, 0);
-		}
-	      
-	      for (uint32_t c = (uint32_t)bh.left(); c < (uint32_t)bh.right(); ++c)
-		{
-		  ref_cov[c] = true;
-		}
-	    }
-	}
-    }
-  
-  static const int min_cov_length = segment_length + 2;
-  
+  //static const int min_cov_length = segment_length + 2;
   long covered_bases = 0;
   int long_enough_bases = 0;
   int left_looking = 0;
@@ -3482,8 +3448,9 @@ void capture_island_ends(ReadTable& it,
        itr != coverage_map.end();
        ++itr)
     {
-      //fprintf (stderr, "Finding pairings in ref seg %u\n", (int)itr->first);
-      
+      #ifdef B_DEBUG
+      fprintf (stderr, "Finding pairings in ref seq %s\n", rt.get_name(itr->first));
+      #endif
       vector<bool>& cov = itr->second;
       vector<bool> long_enough(cov.size());
       
@@ -3492,125 +3459,129 @@ void capture_island_ends(ReadTable& it,
       static const uint8_t min_cov = 1;
       
       for (size_t c = 1; c < cov.size(); ++c)
-	{
-	  int c_cov = cov[c]; //get_cov(cov, c);
-	  if (c_cov < min_cov || c == (cov.size()) - 1)
-	    {
-	      int putative_exon_length = (int)c - (int)last_uncovered;
-	      int last_pos_cov = cov[c - 1]; //get_cov(cov,c - 1);
-	      if (last_pos_cov >= min_cov && putative_exon_length >= min_cov_length)
-		{
-		  //fprintf (stdout, "%s\t%d\t%d\n", rt.get_name(itr->first), last_uncovered + 1, c);
-		  covered_bases += (c + 1 - last_uncovered);
-		  //fprintf(stderr, "making new segment from %d to %d\n", last_uncovered + 1, c);
-		  for (int l = (int)c; l > (int)last_uncovered; --l)
-		    {
-		      long_enough[l] = true;
-		    }
-		}
-	      last_uncovered = c;
-	    }
-	}
+      {
+      uint8_t c_cov = cov[c]; //get_cov(cov, c);
+      if (c_cov < min_cov || c == (cov.size()) - 1)
+        {
+          int putative_exon_length = (int)c - (int)last_uncovered;
+          uint32_t last_pos_cov = cov[c - 1]; //get_cov(cov,c - 1);
+
+          if (last_pos_cov >= min_cov && putative_exon_length >= min_cov_length)
+            {
+              #ifdef B_DEBUG
+              fprintf(stderr, "cov. island: %d-%d\n", (int)(last_uncovered + 1), (int)c);
+              fprintf(stderr, "\t(putative exon length = %d, min_cov_length=%d)\n",putative_exon_length, min_cov_length);
+              #endif
+              covered_bases += (c + 1 - last_uncovered);
+              for (int l = (int)c; l > (int)last_uncovered; --l)
+                {
+                  long_enough[l] = true;
+                }
+            }
+          last_uncovered = c;
+        }
+      }
       
       vector<bool>& ref_cov = long_enough;
       vector<uint8_t> cov_state(ref_cov.size(), UNCOVERED);
       
       for (size_t c = 1; c < ref_cov.size(); ++c)
-	{
-	  if (ref_cov[c])
-	    {
-	      long_enough_bases++;
-	      if (!ref_cov[c - 1])
-		{
-		  num_islands += 1;
-		  
-		  for (int r = (int)c - extend; 
-		       r >= 0 && r < (int)c + repeat_tol && r < (int)cov_state.size(); 
-		       ++r)
-		    {
-		      cov_state[r] |= LOOK_LEFT;
-		    }
-		}
-	    }
-	  else
-	    {
-	      if (ref_cov[c - 1])
-		{
-		  for (int l = (int)c - repeat_tol; 
-		       l >= 0 && l < (int)c + extend && l < (int)cov_state.size(); 
-		       ++l)
-		    {
-		      cov_state[l] |= LOOK_RIGHT;
-		    }	
-		}
-	    }
-	}
+      {
+      if (ref_cov[c])
+        {
+          long_enough_bases++;
+          if (!ref_cov[c - 1])
+          {
+            num_islands += 1;
+
+            for (int r = (int)c - extend;
+                 r >= 0 && r < (int)c + repeat_tol && r < (int)cov_state.size();
+                 ++r)
+              {
+                cov_state[r] |= LOOK_LEFT;
+              }
+          }
+        }
+      else
+        {
+          if (ref_cov[c - 1])
+          {
+            for (int l = (int)c - repeat_tol;
+                 l >= 0 && l < (int)c + extend && l < (int)cov_state.size();
+                 ++l)
+              {
+                cov_state[l] |= LOOK_RIGHT;
+              }
+          }
+        }
+      }
       
       RefSeg* curr_look_left = NULL;
       RefSeg* curr_look_right = NULL;
       
       for (size_t c = 1; c < cov_state.size(); ++c)
-	{
-	  if (cov_state[c] & LOOK_LEFT)
-	    {
-	      left_looking++;
-	      if (!(cov_state[c-1] & LOOK_LEFT))
-		{
-		  expected_look_left_windows.push_back(RefSeg(itr->first,
-							      POINT_DIR_LEFT,
-							      false, /* not important */
-							      READ_DONTCARE,
-							      c,
-							      c + 1));
-		  curr_look_left = &(expected_look_left_windows.back());
-		}
-	      else if (curr_look_left)
-		{
-		  curr_look_left->right++;
-		}
-	    }
-	  else
-	    {
-	      if ((cov_state[c-1] & LOOK_LEFT))
-		{
-		  curr_look_left = NULL;
-		}
-	    }
-	  
-	  if (cov_state[c] & LOOK_RIGHT)
-	    {
-	      right_looking++;
-	      if (!(cov_state[c-1] & LOOK_RIGHT))
-		{
-		  expected_look_right_windows.push_back(RefSeg(itr->first,
-							       POINT_DIR_RIGHT,
-							       false, /* not important */
-							       READ_DONTCARE,
-							       c,
-							       c + 1));
-		  curr_look_right = &(expected_look_right_windows.back());
-		}
-	      else if (curr_look_right)
-		{
-		  curr_look_right->right++;
-		}
-	    }
-	  else
-	    {
-	      if ((cov_state[c-1] & LOOK_RIGHT))
-		{
-		  curr_look_right = NULL;
-		}
-	    }
-	}
+      {
+        if (cov_state[c] & LOOK_LEFT)
+          {
+            left_looking++;
+            if (!(cov_state[c-1] & LOOK_LEFT))
+            {
+              expected_look_left_windows.push_back(RefSeg(itr->first,
+                            POINT_DIR_LEFT,
+                            false, /* not important */
+                            READ_DONTCARE,
+                            c,
+                            c + 1));
+              curr_look_left = &(expected_look_left_windows.back());
+            }
+            else if (curr_look_left)
+            {
+              curr_look_left->right++;
+            }
+          }
+        else
+          {
+            if ((cov_state[c-1] & LOOK_LEFT))
+            {
+              curr_look_left = NULL;
+            }
+          }
+
+        if (cov_state[c] & LOOK_RIGHT)
+          {
+            right_looking++;
+            if (!(cov_state[c-1] & LOOK_RIGHT))
+            {
+              expected_look_right_windows.push_back(RefSeg(itr->first,
+                             POINT_DIR_RIGHT,
+                             false, /* not important */
+                             READ_DONTCARE,
+                             c,
+                             c + 1));
+
+              curr_look_right = &(expected_look_right_windows.back());
+            }
+            else if (curr_look_right)
+            {
+              curr_look_right->right++;
+            }
+          }
+        else
+          {
+            if ((cov_state[c-1] & LOOK_RIGHT))
+            {
+              curr_look_right = NULL;
+            }
+          }
+      }
     }
   
-  fprintf(stderr, "Map covers %ld bases\n", covered_bases);
-  fprintf(stderr, "Map covers %d bases in sufficiently long segments\n", long_enough_bases);
-  fprintf(stderr, "Map contains %d good islands\n", num_islands + 1);
-  fprintf(stderr, "%d are left looking bases\n", left_looking);
-  fprintf(stderr, "%d are right looking bases\n", right_looking);
-  
+  fprintf(stderr, " Map covers %ld bases\n", covered_bases);
+  fprintf(stderr, " Map covers %d bases in sufficiently long segments\n", long_enough_bases);
+  fprintf(stderr, " Map contains %d good islands\n", num_islands + 1);
+  fprintf(stderr, " %d are left looking bases\n", left_looking);
+  fprintf(stderr, " %d are right looking bases\n", right_looking);
+
   vector<RefSeg> expected_don_acc_windows;
   expected_don_acc_windows.insert(expected_don_acc_windows.end(),
 				  expected_look_right_windows.begin(),
@@ -3631,7 +3602,7 @@ void capture_island_ends(ReadTable& it,
 					     max_cov_juncs,
 					     true,
 					     half_splice_mer_len);
-  fprintf(stderr, "Found %ld potential island-end pairing junctions\n", (long int)cov_juncs.size());
+  //fprintf(stderr, "Found %ld potential island-end pairing junctions\n", (long int)cov_juncs.size());
 }
 
 
@@ -3735,7 +3706,8 @@ void driver(istream& ref_stream,
 	
   ReadTable it;
   BowtieHitFactory hit_factory(it,rt);
-  
+  fprintf(stderr, ">> Performing segment-search:\n");
+
   if (left_seg_files.size() > 1)
     {
       fprintf( stderr, "Loading left segment hits...\n");
@@ -3769,11 +3741,10 @@ void driver(istream& ref_stream,
 			   READ_RIGHT);
       fprintf( stderr, "done.\n");
     }
-  fprintf(stderr, "Found %ld potential split-segment junctions\n", (long int)seg_juncs.size());
-  fprintf(stderr, "Found %ld potential small deletions\n", (long int)deletions.size());
-  fprintf(stderr, "Found %ld potential small insertions\n", (long int)insertions.size());
+  fprintf(stderr, "\tfound %ld potential split-segment junctions\n", (long int)seg_juncs.size());
+  fprintf(stderr, "\tfound %ld potential small deletions\n", (long int)deletions.size());
+  fprintf(stderr, "\tfound %ld potential small insertions\n", (long int)insertions.size());
   
-	//vector<FILE*> all_seg_files;
 	vector<FZPipe*> all_seg_files;
 	for (vector<FZPipe>::size_type i = 0; i != left_seg_files.size();i++) {
        all_seg_files.push_back( &(left_seg_files[i]) );
@@ -3791,71 +3762,77 @@ void driver(istream& ref_stream,
   all_map_files.push_back(right_reads_map_file);
   copy(all_seg_files.begin(), all_seg_files.end(), back_inserter(all_map_files));
 #endif
-  
+  map<uint32_t, vector<bool> > coverage_map;
   if (!no_coverage_search || butterfly_search)
     {
       if (ium_reads != "")
-	{
-	  vector<string> ium_read_files;
-	  tokenize(ium_reads,",", ium_read_files);
-	  //vector<FILE*> iums;
-	  vector<FZPipe> iums;
-	  string unzcmd=getUnpackCmd(ium_read_files[0],false);
-	  for (size_t ium = 0; ium < ium_read_files.size(); ++ium)
-	    {
-	      fprintf (stderr, "Indexing extensions in %s\n", ium_read_files[ium].c_str());
-				//FILE* ium_file = fopen(ium_read_files[ium].c_str(), "r");
-				FZPipe ium_file(ium_read_files[ium],unzcmd);
-				if (ium_file.file==NULL)
-		{
-		  fprintf (stderr, "Can't open file %s for reading, skipping...\n",ium_read_files[ium].c_str());
-		  continue;
-		}
-	      iums.push_back(ium_file);
-	    }
-	  
-	  index_read_mers(iums, 5);
-	}
+      {
+        vector<string> ium_read_files;
+        tokenize(ium_reads,",", ium_read_files);
+        vector<FZPipe> iums;
+        string unzcmd=getUnpackCmd(ium_read_files[0],false);
+        for (size_t ium = 0; ium < ium_read_files.size(); ++ium)
+          {
+            //fprintf (stderr, "Indexing extensions in %s\n", ium_read_files[ium].c_str());
+            FZPipe ium_file(ium_read_files[ium],unzcmd);
+            if (ium_file.file==NULL)
+            {
+              fprintf (stderr, "Can't open file %s for reading, skipping...\n",ium_read_files[ium].c_str());
+              continue;
+            }
+            iums.push_back(ium_file);
+          }
+
+        index_read_mers(iums, 5);
+      }
       else
-	{
-	  no_coverage_search = true;
-	  butterfly_search = false;
-	}
+      {
+        no_coverage_search = true;
+        butterfly_search = false;
+      }
       
       if (!no_coverage_search)
-	{
-	  fprintf(stderr, "Looking for junctions by island end pairings\n");
-	  capture_island_ends(it,
-			      rt,
-			      all_seg_files, 
-			      cov_juncs, 
-			      5);
-	  fprintf(stderr, "done\n");
-	}
+      {
+        // looking for junctions by island end pairings
+        fprintf(stderr, ">> Performing coverage-search:\n");
+        capture_island_ends(it,
+                rt,
+                all_seg_files,
+                cov_juncs,
+                coverage_map,
+                5);
+        fprintf(stderr, "\tfound %d potential junctions\n",(int)cov_juncs.size());
+      }
     }
   
   if (butterfly_search)
     {
-      fprintf(stderr, "Looking for junctions between and within islands\n");
+      //looking for junctions between and within islands
+      fprintf(stderr, ">> Performing butterfly-search: \n");
       prune_extension_table(butterfly_overhang);
       compact_extension_table();
       pair_covered_sites(it,
 			 rt,
 			 all_seg_files, 
 			 butterfly_juncs,
+			 coverage_map,
 			 5);
       
-      fprintf(stderr, "done\n");
+      fprintf(stderr, "\tfound %d potential junctions\n",(int)butterfly_juncs.size());
     }
+
+  coverage_map.clear();
   
   std::set<Junction, skip_count_lt> microexon_juncs;
   if (!no_microexon_search)
     {
+      fprintf(stderr, ">> Performing microexon-search: \n");
       std::set<Junction, skip_count_lt> microexon_juncs;
       align_microexon_segs(rt,
 			   microexon_juncs,
 			   max_cov_juncs,
 			   5);
+      fprintf(stderr, "\tfound %d potential junctions\n",(int)microexon_juncs.size());
       juncs.insert(microexon_juncs.begin(), microexon_juncs.end());
     }
 
@@ -3863,7 +3840,7 @@ void driver(istream& ref_stream,
   juncs.insert(seg_juncs.begin(), seg_juncs.end());
   juncs.insert(butterfly_juncs.begin(), butterfly_juncs.end());
   
-  fprintf(stderr, "Reporting potential splice junctions...");
+  //fprintf(stderr, "Reporting potential splice junctions...");
   for(std::set<Junction>::iterator itr = juncs.begin();
       itr != juncs.end();
       ++itr)
@@ -3886,7 +3863,7 @@ void driver(istream& ref_stream,
     left_reads_file_for_indel_discovery.close();
     right_reads_file.close();
     right_reads_file_for_indel_discovery.close();
-  fprintf (stderr, "done\n");
+  //fprintf (stderr, "done\n");
   fprintf (stderr, "Reported %d total possible splices\n", (int)juncs.size());
   
   
@@ -3929,7 +3906,7 @@ int main(int argc, char** argv)
 {
   fprintf(stderr, "segment_juncs v%s (%s)\n", PACKAGE_VERSION, SVN_REVISION);
   fprintf(stderr, "---------------------------\n");
-  
+
   int parse_ret = parse_options(argc, argv, print_usage);
   if (parse_ret)
     return parse_ret;
@@ -4062,6 +4039,7 @@ int main(int argc, char** argv)
     }
 
   //FILE* left_reads_map_file = fopen(left_reads_map_file_name.c_str(), "r");
+  /*
   FZPipe left_reads_map_file(left_reads_map_file_name, unzcmd);
   if (left_reads_map_file.file==NULL)
     {
@@ -4069,7 +4047,7 @@ int main(int argc, char** argv)
 	      left_reads_map_file_name.c_str());
       exit(1);
     }
-
+  */
   vector<string> left_segment_file_names;
   //vector<FILE*> left_segment_files;
   vector<FZPipe> left_segment_files;
@@ -4086,7 +4064,6 @@ int main(int argc, char** argv)
         }
       left_segment_files.push_back(seg_file);
     }
-  
   //vector<FILE*> right_segment_files;
   vector<FZPipe> right_segment_files;
   //FILE* right_reads_file = NULL;
@@ -4125,6 +4102,8 @@ int main(int argc, char** argv)
 	  right_segment_files.push_back(seg_file);
 	}
     }
+  // min_cov_length=20;
+  if (min_cov_length>segment_length-2) min_cov_length=segment_length-2;
   
   driver(ref_stream, 
 	 juncs_file,

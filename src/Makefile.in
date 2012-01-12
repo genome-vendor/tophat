@@ -49,8 +49,8 @@ bin_PROGRAMS = prep_reads$(EXEEXT) tophat_reports$(EXEEXT) \
 	juncs_db$(EXEEXT) gtf_juncs$(EXEEXT) extract_reads$(EXEEXT) \
 	segment_juncs$(EXEEXT) closure_juncs$(EXEEXT) \
 	long_spanning_reads$(EXEEXT) fix_map_ordering$(EXEEXT) \
-	bam2fastx$(EXEEXT) library_stats$(EXEEXT) mask_sam$(EXEEXT) \
-	wiggles$(EXEEXT) sam_juncs$(EXEEXT)
+	bam_merge$(EXEEXT) bam2fastx$(EXEEXT) library_stats$(EXEEXT) \
+	mask_sam$(EXEEXT) wiggles$(EXEEXT) sam_juncs$(EXEEXT)
 subdir = src
 DIST_COMMON = $(dist_bin_SCRIPTS) $(noinst_HEADERS) \
 	$(srcdir)/Makefile.am $(srcdir)/Makefile.in
@@ -84,6 +84,10 @@ am_bam2fastx_OBJECTS = bam2fastx.$(OBJEXT)
 bam2fastx_OBJECTS = $(am_bam2fastx_OBJECTS)
 am__DEPENDENCIES_1 =
 bam2fastx_DEPENDENCIES = $(top_builddir)/src/libgc.a \
+	$(am__DEPENDENCIES_1)
+am_bam_merge_OBJECTS = bam_merge.$(OBJEXT)
+bam_merge_OBJECTS = $(am_bam_merge_OBJECTS)
+bam_merge_DEPENDENCIES = $(top_builddir)/src/libgc.a \
 	$(am__DEPENDENCIES_1)
 am_closure_juncs_OBJECTS = closures.$(OBJEXT)
 closure_juncs_OBJECTS = $(am_closure_juncs_OBJECTS)
@@ -152,19 +156,21 @@ CXXLD = $(CXX)
 CXXLINK = $(CXXLD) $(AM_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) \
 	-o $@
 SOURCES = $(libgc_a_SOURCES) $(libtophat_a_SOURCES) \
-	$(bam2fastx_SOURCES) $(closure_juncs_SOURCES) \
-	$(extract_reads_SOURCES) $(fix_map_ordering_SOURCES) \
-	$(gtf_juncs_SOURCES) $(juncs_db_SOURCES) \
-	$(library_stats_SOURCES) $(long_spanning_reads_SOURCES) \
-	$(mask_sam_SOURCES) $(prep_reads_SOURCES) $(sam_juncs_SOURCES) \
+	$(bam2fastx_SOURCES) $(bam_merge_SOURCES) \
+	$(closure_juncs_SOURCES) $(extract_reads_SOURCES) \
+	$(fix_map_ordering_SOURCES) $(gtf_juncs_SOURCES) \
+	$(juncs_db_SOURCES) $(library_stats_SOURCES) \
+	$(long_spanning_reads_SOURCES) $(mask_sam_SOURCES) \
+	$(prep_reads_SOURCES) $(sam_juncs_SOURCES) \
 	$(segment_juncs_SOURCES) $(tophat_reports_SOURCES) \
 	$(wiggles_SOURCES)
 DIST_SOURCES = $(libgc_a_SOURCES) $(libtophat_a_SOURCES) \
-	$(bam2fastx_SOURCES) $(closure_juncs_SOURCES) \
-	$(extract_reads_SOURCES) $(fix_map_ordering_SOURCES) \
-	$(gtf_juncs_SOURCES) $(juncs_db_SOURCES) \
-	$(library_stats_SOURCES) $(long_spanning_reads_SOURCES) \
-	$(mask_sam_SOURCES) $(prep_reads_SOURCES) $(sam_juncs_SOURCES) \
+	$(bam2fastx_SOURCES) $(bam_merge_SOURCES) \
+	$(closure_juncs_SOURCES) $(extract_reads_SOURCES) \
+	$(fix_map_ordering_SOURCES) $(gtf_juncs_SOURCES) \
+	$(juncs_db_SOURCES) $(library_stats_SOURCES) \
+	$(long_spanning_reads_SOURCES) $(mask_sam_SOURCES) \
+	$(prep_reads_SOURCES) $(sam_juncs_SOURCES) \
 	$(segment_juncs_SOURCES) $(tophat_reports_SOURCES) \
 	$(wiggles_SOURCES)
 HEADERS = $(noinst_HEADERS)
@@ -824,6 +830,9 @@ fix_map_ordering_LDFLAGS = $(BAM_LDFLAGS)
 bam2fastx_SOURCES = bam2fastx.cpp
 bam2fastx_LDADD = $(top_builddir)/src/libgc.a $(BAM_LIB)
 bam2fastx_LDFLAGS = $(BAM_LDFLAGS)
+bam_merge_SOURCES = bam_merge.cpp
+bam_merge_LDADD = $(top_builddir)/src/libgc.a $(BAM_LIB)
+bam_merge_LDFLAGS = $(BAM_LDFLAGS)
 closure_juncs_SOURCES = closures.cpp
 closure_juncs_LDADD = $(top_builddir)/src/libtophat.a $(BAM_LIB)
 closure_juncs_LDFLAGS = $(BAM_LDFLAGS)
@@ -906,6 +915,9 @@ clean-binPROGRAMS:
 bam2fastx$(EXEEXT): $(bam2fastx_OBJECTS) $(bam2fastx_DEPENDENCIES) 
 	@rm -f bam2fastx$(EXEEXT)
 	$(CXXLINK) $(bam2fastx_LDFLAGS) $(bam2fastx_OBJECTS) $(bam2fastx_LDADD) $(LIBS)
+bam_merge$(EXEEXT): $(bam_merge_OBJECTS) $(bam_merge_DEPENDENCIES) 
+	@rm -f bam_merge$(EXEEXT)
+	$(CXXLINK) $(bam_merge_LDFLAGS) $(bam_merge_OBJECTS) $(bam_merge_LDADD) $(LIBS)
 closure_juncs$(EXEEXT): $(closure_juncs_OBJECTS) $(closure_juncs_DEPENDENCIES) 
 	@rm -f closure_juncs$(EXEEXT)
 	$(CXXLINK) $(closure_juncs_LDFLAGS) $(closure_juncs_OBJECTS) $(closure_juncs_LDADD) $(LIBS)
@@ -977,6 +989,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/align_status.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/alphabet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bam2fastx.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bam_merge.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bwt_map.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/closures.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/codons.Po@am__quote@

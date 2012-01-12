@@ -71,7 +71,7 @@ Options:
     --keep-tmp
     --tmp-dir                      <dirname>   [ default: <output_dir>/tmp ]
     -z/--zpacker                   <program>   [ default: gzip             ]
-    --no-unmapped-fifo
+    -X/--unmapped-fifo                         [ use mkfifo to compress more temporary files]
 
 Advanced Options:
     --initial-read-mismatches      <int>       [ default: 2                ]
@@ -99,10 +99,6 @@ SAM Header Options (for embedding sequencing run metadata in output):
     --rg-center                    <string>    (sequencing center name)
     --rg-date                      <string>    (ISO 8601 date of the sequencing run)
     --rg-platform                  <string>    (Sequencing platform descriptor)
-    
-    
-Added Options
-    --best                                     aligns with bowties best strata tryhard
 '''
 
 class Usage(Exception):
@@ -115,11 +111,12 @@ run_log = None
 run_cmd = None
 tmp_dir = output_dir + "tmp/"
 bin_dir = sys.path[0] + "/"
-use_zpacker = False # don't change it here, this is set by -z/--zpacker option
-unmapped_reads_fifo = None # if use_BWT_FIFO, this is tricking bowtie into writing the
+use_zpacker = False # this is set by -z/--zpacker option (-z0 leaves it False)
+
+use_BWT_FIFO = False # can only be set to True if use_zpacker is True
+# enabled by -X/-unmapped-fifo option (unless -z0)
+unmapped_reads_fifo = None # if use_BWT_FIFO is True, this is tricking bowtie into writing the
                            # unmapped reads into a compressed file
-use_BWT_FIFO = True # only works if use_zpacker == True
-#can be disabled by -X/-no-unmapped-fifo option if there are any issues
 
 samtools_path = None
 bowtie_path = None
@@ -204,8 +201,8 @@ class TopHatParams:
                     self.zipper = value
                     #if not self.zipper:
                     #   self.zipper='gzip'
-                elif option == "--no-unmapped-fifo":
-                    use_BWT_FIFO=False
+                elif option in ("-X", "--unmapped-fifo"):
+                    use_BWT_FIFO=True
             if self.zipper:
                 use_zpacker=True
                 if self.num_cpus>1 and not self.zipper_opts:
@@ -443,8 +440,8 @@ class TopHatParams:
         self.max_deletion_length = 3
         self.raw_insertions = None
         self.raw_deletions = None
-        self.closure_search = None
         self.coverage_search = None
+        self.closure_search = False
         self.microexon_search = False
         self.butterfly_search = None
 
@@ -453,8 +450,8 @@ class TopHatParams:
         self.read_params.check()
         self.system_params.check()
 
-        if self.segment_length <= 4:
-            die("Error: arg to --segment-length must at least 4")
+        if self.segment_length < 10:
+            die("Error: arg to --segment-length must at least 10")
         if self.segment_mismatches < 0 or self.segment_mismatches > 3:
             die("Error: arg to --segment-mismatches must in [0, 3]")
 
@@ -515,11 +512,11 @@ class TopHatParams:
                         "--inner-dist-std-dev", str(self.read_params.mate_inner_dist_std_dev)])
         if self.gff_annotation != None:
             cmd.extend(["--gtf-annotations", str(self.gff_annotation)])
-        if not self.closure_search:
+        if self.closure_search == False:
             cmd.append("--no-closure-search")
-        if not self.coverage_search:
+        if self.coverage_search == False:
             cmd.append("--no-coverage-search")
-        if not self.microexon_search:
+        if self.microexon_search == False:
             cmd.append("--no-microexon-search")
         if self.butterfly_search:
             cmd.append("--butterfly-search")
@@ -546,7 +543,7 @@ class TopHatParams:
     # of options.
     def parse_options(self, argv):
         try:
-            opts, args = getopt.getopt(argv[1:], "hvp:m:F:a:i:I:G:r:o:j:z:s:g:QC",
+            opts, args = getopt.getopt(argv[1:], "hvp:m:F:a:i:I:G:r:o:j:Xz:s:g:QC",
                                         ["version",
                                          "help",
                                          "output-dir=",
@@ -603,13 +600,12 @@ class TopHatParams:
                                          "rg-platform=",
                                          "tmp-dir=",
                                          "zpacker=",
-                                         "no-unmapped-fifo",
+                                         "unmapped-fifo",
                                          "max-insertion-length=",
                                          "max-deletion-length=",
                                          "insertions=",
                                          "deletions=",
                                          "no-sort-bam",
-                                         "best",
                                          "no-convert-bam"])
         except getopt.error, msg:
             raise Usage(msg)
@@ -650,10 +646,10 @@ class TopHatParams:
                 self.skip_check_reads = True
             if option == "--no-coverage-search":
                 self.coverage_search = False
-            if option == "--no-closure-search":
-                self.closure_search = False
             if option == "--coverage-search":
                 self.coverage_search = True
+            if option == "--no-closure-search":
+                self.closure_search = False
             if option == "--closure-search":
                 self.closure_search = True
             if option == "--microexon-search":
@@ -682,8 +678,6 @@ class TopHatParams:
                 custom_out_dir = value + "/"
             if option == "--tmp-dir":
                 custom_tmp_dir = value + "/"
-            if option == "--best":
-                self.best = True
 
         if custom_out_dir != None:
             output_dir = custom_out_dir
@@ -1077,11 +1071,14 @@ class FastxReader:
           if qstrlen + self.isColor >= seq_len :
                break # qv string has reached the length of seq string
           #loop until qv has the same length as seq
-      if self.isColor and qstr[0]=="!":
-           #some color qual string have a '!' character at the beginning, should be stripped
-           qstr = qstr[1:]
-           qstrlen -= 1
-      if seq_len != qstrlen+self.isColor :
+      #if self.isColor and qstr[0]=="!":
+      #     #some color qual string have a '!' character at the beginning, should be stripped
+      #     qstr = qstr[1:]
+      #     qstrlen -= 1
+      if self.isColor and seq_len==qstrlen+1:
+            qstr="!"+qstr
+            qstrlen += 1
+      if seq_len != qstrlen :
            raise ValueError("Length mismatch between sequence and quality strings "+ \
                                 "for %s (%i vs %i)." \
                                 % (seqid, seq_len, qstrlen))
@@ -1089,9 +1086,10 @@ class FastxReader:
         die("\nError encountered parsing file "+self.fname+":\n "+str(err))
     #return the record
     self.numrecords+=1
-    if self.isColor :
-        seq_len-=1
-        seqstr = seqstr[1:]
+    ##--discard the primer base [NO]
+    #if self.isColor :
+    #    seq_len-=1
+    #    seqstr = seqstr[1:]
     return (seqid, seqstr, seq_len, qstr)
 
   def nextFasta(self):
@@ -1125,9 +1123,9 @@ class FastxReader:
         die("\nError encountered parsing fasta file "+self.fname+"\n "+str(err))
     #return the record and continue
     self.numrecords+=1
-    if self.isColor :
-        seq_len-=1
-        seqstr = seqstr[1:]
+    #if self.isColor : # -- discard primer base
+    #    seq_len-=1
+    #    seqstr = seqstr[1:]
     return (seqid, seqstr, seq_len, None)
 
   def getLine(self):
@@ -1227,7 +1225,7 @@ class ZWriter:
 def check_reads_format(params, reads_files):
     #print >> sys.stderr, "[%s] Checking reads" % right_now()
     #
-    seed_len = params.read_params.seed_length
+    #seed_len = params.read_params.seed_length
     fileformat = params.read_params.reads_format
 
     observed_formats = set([])
@@ -1257,10 +1255,10 @@ def check_reads_format(params, reads_files):
     if len(observed_formats) > 1:
         die("Error: TopHat requires all reads be either FASTQ or FASTA.  Mixing formats is not supported.")
     fileformat=list(observed_formats)[0]
-    if seed_len != None:
-        seed_len = max(seed_len, min_seed_len)
-    else:
-        seed_len = max_seed_len
+    #if seed_len != None:
+    #    seed_len = max(seed_len, max_seed_len)
+    #else:
+    #    seed_len = max_seed_len
     #print >> sys.stderr, "\tmin read length: %dbp, max read length: %dbp" % (min_seed_len, max_seed_len)
     print >> sys.stderr, "\tformat:\t\t %s" % fileformat
     if fileformat == "fastq":
@@ -1283,7 +1281,8 @@ def check_reads_format(params, reads_files):
                                    params.read_params.color,
                                    params.read_params.color_out,
                                    params.read_params.library_type,
-                                   seed_len,
+                                   #seed_len,
+                                   params.read_params.seed_length,
                                    fileformat,
                                    params.read_params.mate_inner_dist,
                                    params.read_params.mate_inner_dist_std_dev,
@@ -1452,8 +1451,6 @@ def bowtie(params,
 
         if params.read_params.color:
             bowtie_cmd += ["-C", "--col-keepends"]
-        if params.best:#added by Ido
-            bowtie_cmd += ["--best", "--tryhard", "--strata"]
         unzip_cmd=None
         if use_zpacker:
           unzip_cmd=[ params.system_params.zipper ]
@@ -1488,7 +1485,8 @@ def bowtie(params,
         shellcmd=""
         unzip_proc=None
         zip_proc=None
-        if use_zpacker:
+        z_input=use_zpacker and reads_list.endswith(".z")
+        if z_input:
            unzip_proc = subprocess.Popen(unzip_cmd,
                                  stdin=open(reads_list, "rb"),
                                  stdout=subprocess.PIPE)
@@ -1594,7 +1592,7 @@ def get_gtf_juncs(gff_annotation):
 
     gtf_juncs_cmd=[prog_path("gtf_juncs"), gff_annotation]
     try:
-        print >> run_log, " ".join(gtf_juncs_cmd)
+        print >> run_log, " ".join(gtf_juncs_cmd), " > "+gtf_juncs_out_name
         retcode = subprocess.call(gtf_juncs_cmd,
                                   stderr=gtf_juncs_log,
                                   stdout=gtf_juncs_out)
@@ -1642,7 +1640,7 @@ def build_juncs_bwt_index(external_splice_prefix, color):
 # Build a splice index from a .juncs file, suitable for use with specified read
 # (or read segment) lengths
 def build_juncs_index(min_anchor_length,
-                      read_length,
+                      max_seg_len,
                       juncs_prefix,
                       external_juncs,
                       external_insertions,
@@ -1665,7 +1663,7 @@ def build_juncs_index(min_anchor_length,
     # juncs_db_cmd = [bin_dir + "juncs_db",
     juncs_db_cmd = [prog_path("juncs_db"),
                     str(min_anchor_length),
-                    str(read_length),
+                    str(max_seg_len),
                     juncs_file_list,
                     insertions_file_list,
                     deletions_file_list,
@@ -1753,7 +1751,7 @@ def compile_reports(params, sam_header_filename, left_maps, left_reads, right_ma
                                              stdout=subprocess.PIPE,
                                              stderr=report_log)
 
-                bamsort_cmd = ["samtools", "sort", "-", accepted_hits]
+                bamsort_cmd = [samtools_path, "sort", "-", accepted_hits]
                 bamsort_proc= subprocess.Popen(bamsort_cmd,
                                                preexec_fn=subprocess_setup,
                                                stderr=open(logging_dir + "reports.samtools_sort.log", "w"),
@@ -1779,7 +1777,7 @@ def compile_reports(params, sam_header_filename, left_maps, left_reads, right_ma
                                         stderr=report_log)
             tmp_sam = output_dir + "accepted_hits.sam"
 
-            bam_to_sam_cmd = ["samtools", "view", "-h", accepted_hits]
+            bam_to_sam_cmd = [samtools_path, "view", "-h", accepted_hits]
             print >> run_log, " ".join(bam_to_sam_cmd) + " > " + tmp_sam
             bam_to_sam_log = open(logging_dir + "accepted_hits_bam_to_sam.log", "w")
             tmp_sam_file = open(tmp_sam, "w")
@@ -1894,7 +1892,7 @@ def split_reads(reads_filename,
     line_state = 0
     read_name = ""
     read_seq = ""
-    read_qual = ""
+    read_quals = ""
     num_segments = 0
     offsets = []
     for line in zreads.file:
@@ -2138,6 +2136,40 @@ def spliced_alignment(params,
     maps = { left_reads : [], right_reads : [] }
     #single_segments = False
 
+    max_seg_len = segment_len #this is the ref seq span on either side of the junctions
+                              #to be extracted into segment_juncs.fa
+
+    num_segs = int(read_len / segment_len)
+    if (read_len % segment_len) >= min(segment_len-2, 20):
+        #remainder is shorter but long enough to become a new segment
+        num_segs += 1
+    else:
+       # the last segment is longer
+       if num_segs>1: max_seg_len += (read_len % segment_len)
+
+    # daehwan - check this out
+    if num_segs <= 1:
+            print >> sys.stderr, "Warning: you have only one segment per read\n\twe strongly recommend that you decrease --segment-length to about half the read length because TopHat will work better with multiple segments"
+
+    # Using the num_segs value returned by check_reads(),
+    # decide which junction discovery strategy to use
+    if num_segs<3:
+       #if params.butterfly_search != False:
+       #   params.butterfly_search = True
+       if params.coverage_search != False:
+               params.coverage_search = True
+       if num_segs == 1:
+         segment_len = read_len
+    else: #num_segs >= 3:
+        # if we have at least three segments, just use split segment search,
+        # which is the most sensitive and specific, fastest, and lightest-weight.
+        # so unless specifically requested, disable the other junction searches
+        if params.closure_search != True:
+               params.closure_search = False
+        if params.coverage_search != True:
+               params.coverage_search = False
+        if params.butterfly_search != True:
+                params.butterfly_search = False
     # Perform the first part of the TopHat work flow on the left and right
     # reads of paired ends separately - we'll use the pairing information later
     for reads in [left_reads, right_reads]:
@@ -2149,14 +2181,7 @@ def spliced_alignment(params,
         unmapped_unspliced = tmp_dir + fbasename + "_missing.fq"
         if use_BWT_FIFO:
             unmapped_unspliced += ".z"
-        num_segs = read_len / segment_len
-        if read_len % segment_len >= min(segment_len -2, 20):
-            num_segs += 1
 
-        # daehwan - check this out
-        if num_segs <= 1:
-            print >> sys.stderr, "Warning: you have only one segment per read\n\twe strongly recommend that you decrease --segment-length to about half the read length because TopHat will work better with multiple segments"
-            
         # Perform the initial Bowtie mapping of the full length reads
         (unspliced_map, unmapped) = bowtie(params,
                                            bwt_idx_prefix,
@@ -2181,21 +2206,6 @@ def spliced_alignment(params,
                              [unspliced_map],
                              [],
                              unspliced_sam)
-        # Using the num_segs value returned by check_reads(), decide which
-        # junction discovery strategy to use
-        if num_segs == 1:
-            segment_len = read_len
-        elif num_segs >= 3:
-            # if we have at least three segments, just use split segment search,
-            # which is the most sensitive and specific, fastest, and lightest-weight.
-            if not params.closure_search:
-                params.closure_search = False
-            if not params.coverage_search:
-                params.coverage_search = False
-            if not params.butterfly_search:
-                params.butterfly_search = False
-        if not params.closure_search:
-            params.closure_search = False
         seg_maps = []
         unmapped_segs = []
         segs = []
@@ -2234,7 +2244,7 @@ def spliced_alignment(params,
             # if there's only one segment, just collect the initial map as the only
             # map to be used downstream for coverage-based junction discovery
             read_segments = [reads]
-            maps[reads] = Maps(unspliced_map, unspliced_sam, [unspliced_map], [unmapped_unspliced], read_segments)
+            maps[reads] = Maps(unspliced_map, unspliced_sam, [unspliced_map], [unmapped_unspliced], [unmapped_unspliced])
 
     # Unless the user asked not to discover new junctions, start that process
     # here
@@ -2297,7 +2307,8 @@ def spliced_alignment(params,
         print >> sys.stderr, "Warning: junction database is empty!"
     if junc_idx_prefix != None:
         build_juncs_index(3,
-                          segment_len,
+                          #segment_len,
+                          max_seg_len,
                           junc_idx_prefix,
                           possible_juncs,
                           possible_insertions,
@@ -2315,9 +2326,9 @@ def spliced_alignment(params,
         if junc_idx_prefix != None:
             i = 0
             for seg in maps[reads].segs:
-                fsegname=getFileBaseName(seg)
+                fsegname = getFileBaseName(seg)
                 seg_out = tmp_dir + fsegname + ".to_spliced.bwtout"
-                if use_zpacker: seg_out+=".z"
+                if use_zpacker: seg_out += ".z"
                 extra_output = "(%d/%d)" % (i+1, len(maps[reads].segs))
                 (seg_map, unmapped) = bowtie_segment(params,
                                                      tmp_dir + junc_idx_prefix,
@@ -2330,26 +2341,26 @@ def spliced_alignment(params,
                 i += 1
 
         # Join the contigous and spliced segment hits into full length read
-        # alignments
-        rfname=getFileBaseName(reads)
-        rfdir=getFileDir(reads)
+        # alignments or convert a spliced segment hit into a genomic-coordinate hit
+        rfname = getFileBaseName(reads)
+        rfdir = getFileDir(reads)
         mapped_reads = rfdir + rfname + ".candidates.bam"
-        merged_map=rfdir + rfname+".candidates_and_unspl.bam"
+        merged_map =rfdir + rfname + ".candidates_and_unspl.bam"
         unspl_bwtfile = maps[reads].unspliced_bwt
         unspl_samfile = maps[reads].unspliced_sam
 
-        if num_segs > 1:
-            join_mapped_segments(params,
-                                 sam_header_filename,
-                                 reads,
-                                 ref_fasta,
-                                 possible_juncs,
-                                 possible_insertions,
-                                 possible_deletions,
-                                 maps[reads].seg_maps,
-                                 spliced_seg_maps,
-                                 mapped_reads)
+        join_mapped_segments(params,
+                             sam_header_filename,
+                             reads,
+                             ref_fasta,
+                             possible_juncs,
+                             possible_insertions,
+                             possible_deletions,
+                             maps[reads].seg_maps,
+                             spliced_seg_maps,
+                             mapped_reads)
 
+        if num_segs > 1:
             # Merge the spliced and unspliced full length alignments into a
             # single SAM file.
             # The individual SAM files are all already sorted in
@@ -2357,55 +2368,30 @@ def spliced_alignment(params,
             # NOTE: We also should be able to address bug #134 here, by replacing
             # contiguous alignments that poke into an intron by a small amount by
             # the correct spliced alignment.
-            merge_sort_fifo = tmp_dir + rfname+"_"+str(os.getpid())+".sam.merge_sort.fifo"
-            try:
-              if os.path.exists(merge_sort_fifo):
-                 os.remove(merge_sort_fifo)
-              os.mkfifo(merge_sort_fifo)
-            except OSError, o:
-                 die(fail_str+"Error at mkfifo("+merge_sort_fifo+") "+str(o))
 
             try:
-                samfifo_cmd=[ samtools_path, "view", "-h", mapped_reads ]
-                print >> run_log, " ".join(samfifo_cmd)+" > "+merge_sort_fifo+" &"
-                if os.fork()==0:
-                   subprocess.call(samfifo_cmd,
-                                    stdout=open(merge_sort_fifo, "w"))
-                   os._exit(os.EX_OK)
-                samview_cmd=[samtools_path, "view", maps[reads].unspliced_sam]
-                samview_proc=subprocess.Popen(samview_cmd,
-                                 stdout=subprocess.PIPE)
-                merge_sort_cmd = ["sort",
-                                  "-k1,1n", "-m",
-                                   "-T"+tmp_dir, "-",
-                                   merge_sort_fifo]
-                msort_proc=subprocess.Popen(merge_sort_cmd,
-                                stdin=samview_proc.stdout,
-                                stdout=subprocess.PIPE)
-                samview_proc.stdout.close()
-                rebam_cmd = [samtools_path, "view", "-S", "-b", "-"]
-                rebam_proc=subprocess.Popen(rebam_cmd,
-                               preexec_fn=subprocess_setup,
-                               stdin=msort_proc.stdout,
-                               stderr=open(logging_dir+"sort_rebam.log","w"),
-                               stdout=open(merged_map, "wb"))
-                msort_proc.stdout.close()
-                print >> run_log, " ".join(samview_cmd)+" | " + " ".join(merge_sort_cmd) + \
-                              " | "+" ".join(rebam_cmd)+" > "+merged_map
-                rebam_proc.communicate()
+                merge_cmd = [ prog_path("bam_merge"), merged_map,
+                                        maps[reads].unspliced_sam,
+                                        mapped_reads ]
+                print >> run_log, " ".join(merge_cmd)
+                ret = subprocess.call( merge_cmd,
+                                   stderr=open(logging_dir + "sam_merge.log", "w") )
+                if ret != 0:
+                    die(fail_str+"Error executing: "+" ".join(merge_cmd))
             except OSError, o:
                 die(fail_str+"Error: "+str(o))
-            os.remove(merge_sort_fifo)
             maps[reads] = [merged_map]
+
             if not params.system_params.keep_tmp:
                 os.remove(mapped_reads)
                 os.remove(unspl_samfile)
+                os.remove(unspl_bwtfile)
         else:
-            os.rename(unspl_samfile, merged_map)
+            os.rename(mapped_reads, merged_map)
             maps[reads] = [merged_map]
-
-        if not params.system_params.keep_tmp:
-            os.remove(unspl_bwtfile)
+            if not params.system_params.keep_tmp:
+                os.remove(unspl_samfile)
+                os.remove(unspl_bwtfile)
 
     return maps
 
@@ -2418,7 +2404,7 @@ def die(msg=None):
 # (current script path is tested first, then PATH envvar)
 def which(program):
     def is_executable(fpath):
-        return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
     fpath, fname = os.path.split(program)
     if fpath:
         if is_executable(program):
@@ -2441,7 +2427,7 @@ def prog_path(program):
 
 # FIXME: this should get set during the make dist autotools phase of the build
 def get_version():
-   return "1.3.1"
+   return "1.3.3"
 
 def mlog(msg):
   print >> sys.stderr, "[DBGLOG]:"+msg
@@ -2472,7 +2458,8 @@ def main(argv=None):
         left_quals_list, right_quals_list = [], []
         if (not params.read_params.quals and len(args) > 2) or (params.read_params.quals and len(args) > 3):
             if params.read_params.mate_inner_dist == None:
-                die("Error: you must set the mean inner distance between mates with -r")
+                params.read_params.mate_inner_dist = 50
+                #die("Error: you must set the mean inner distance between mates with -r")
 
             right_reads_list = args[2]
             if params.read_params.quals:
@@ -2553,8 +2540,9 @@ def main(argv=None):
         else:
             right_kept_reads = None
         seed_len=params.read_params.seed_length
-        if seed_len != None:
+        if seed_len: #if read len was explicitly given
             seed_len = max(seed_len, min_read_len)
+            #can't be smaller than minimum length observed
         else:
             seed_len = max_read_len
         params.read_params.seed_length=seed_len
