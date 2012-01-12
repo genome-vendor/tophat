@@ -13,10 +13,11 @@
 #include <sstream>
 #include <seqan/sequence.h>
 #include "common.h"
+#include <queue>
 
 using std::string;
 
-static const int max_read_bp = 64;
+static const int max_read_bp = 256;
 
 // Note: qualities are not currently used by TopHat
 struct Read
@@ -69,15 +70,6 @@ string DnaString_to_string(const Type& dnaString)
 
 class ReadTable;
 
-bool get_read_from_stream(uint64_t insert_id,
-			  FILE* reads_file,
-			  ReadFormat reads_format,
-			  bool strip_slash,
-			  char read_name [], 
-			  char read_seq  [],
-			  char read_alt_name [],
-			  char read_qual []);
-
 class FLineReader { //simple text line reader class, buffering last line read
   int len;
   int allocated;
@@ -87,6 +79,12 @@ class FLineReader { //simple text line reader class, buffering last line read
   bool is_pipe;
   bool pushed; //pushed back
   int lcount; //counting all lines read by the object
+
+ public:
+  // daehwan - this is not a good place to store the last read ...
+  Read last_read;
+  bool pushed_read;
+  
 public:
   char* chars() { return buf; }
   char* line() { return buf; }
@@ -97,6 +95,7 @@ public:
   FILE* fhandle() { return file; }
   void pushBack() { if (lcount>0) pushed=true; } // "undo" the last getLine request
            // so the next call will in fact return the same line
+  void pushBack_read() { if(!last_read.name.empty()) pushed_read=true;}
   FLineReader(FILE* stream=NULL) {
     len=0;
     isEOF=false;
@@ -107,6 +106,7 @@ public:
     buf[0]=0;
     file=stream;
     pushed=false;
+    pushed_read=false;
     }
 
   FLineReader(FZPipe& fzpipe) {
@@ -119,6 +119,7 @@ public:
     file=fzpipe.file;
     is_pipe=!fzpipe.pipecmd.empty();
     pushed=false;
+    pushed_read=false;
     }
   void close() {
     if (file==NULL) return;
@@ -130,10 +131,80 @@ public:
     }
 };
 
+bool get_read_from_stream(uint64_t insert_id,
+			  FLineReader& fr,
+			  ReadFormat reads_format,
+			  bool strip_slash,
+			  Read& read,
+			  FILE* um_out=NULL, //unmapped reads output
+			  bool um_write_found=false);
+
 void skip_lines(FLineReader& fr);
 bool next_fasta_record(FLineReader& fr, string& defline, string& seq, ReadFormat reads_format);
 bool next_fastq_record(FLineReader& fr, const string& seq, string& alt_name, string& qual, ReadFormat reads_format);
-bool next_fastx_read(FLineReader& fr, Read& read, ReadFormat reads_format,
+bool next_fastx_read(FLineReader& fr, Read& read, ReadFormat reads_format=FASTQ,
                         FLineReader* frq=NULL);
 
+
+class ReadStream {
+  protected:
+    struct ReadOrdering
+    {
+      bool operator()(std::pair<uint64_t, Read>& lhs, std::pair<uint64_t, Read>& rhs)
+      {
+        return (lhs.first > rhs.first);
+      }
+    };
+    FZPipe fstream;
+    std::priority_queue< std::pair<uint64_t, Read>,
+         std::vector<std::pair<uint64_t, Read> >,
+         ReadOrdering > read_pq;
+    uint64_t last_id; //keep track of last requested ID, for consistency check
+    bool r_eof;
+    bool next_read(Read& read, ReadFormat read_format); //get top read from the queue
+
+  public:
+    ReadStream():fstream(), read_pq(), last_id(0), r_eof(false) {   }
+
+    ReadStream(string& fname):fstream(fname, false),
+       read_pq(), last_id(0), r_eof(false) {   }
+
+    void init(string& fname) {
+        fstream.openRead(fname, false);
+        }
+    const char* filename() {
+        return fstream.filename.c_str();
+        }
+    //read_ids must ALWAYS be requested in increasing order
+    bool getRead(uint64_t read_id, Read& read,
+        ReadFormat read_format=FASTQ,
+        bool strip_slash=false,
+        FILE* um_out=NULL, //unmapped reads output
+        bool um_write_found=false);
+
+    void rewind() {
+      fstream.rewind();
+      clear();
+      }
+    FILE* file() {
+      return fstream.file;
+      }
+    void clear() {
+      /* while (read_pq.size()) {
+        const std::pair<uint64_t, Read>& t = read_pq.top();
+        //free(t.second);
+        read_pq.pop();
+        } */
+      read_pq=std::priority_queue< std::pair<uint64_t, Read>,
+          std::vector<std::pair<uint64_t, Read> >,
+          ReadOrdering > ();
+      }
+    void close() {
+      clear();
+      fstream.close();
+      }
+    ~ReadStream() {
+      close();
+      }
+};
 #endif

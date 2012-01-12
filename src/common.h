@@ -19,6 +19,8 @@
 #include "bam/sam.h"
 
 
+#define VMAXINT32 0xFFFFFFFF
+
 #ifdef MEM_DEBUG
  void process_mem_usage(double& vm_usage, double& resident_set);
  void print_mem_usage();
@@ -60,6 +62,7 @@ extern int island_extension;
 extern int num_cpus;
 extern int segment_length; // the read segment length used by the pipeline
 extern int segment_mismatches;
+extern int max_read_mismatches;
 
 extern int max_splice_mismatches;
 
@@ -67,7 +70,7 @@ enum ReadFormat {FASTA, FASTQ};
 extern ReadFormat reads_format;
 
 extern bool verbose;
-extern int max_multihits;
+extern unsigned int max_multihits;
 extern bool no_closure_search;
 extern bool no_coverage_search;
 extern bool no_microexon_search;
@@ -91,8 +94,18 @@ extern bool quals;
 extern bool integer_quals;
 extern bool color;
 extern bool color_out;
-
 extern std::string gtf_juncs;
+
+//prep_reads only: --flt-reads <bowtie-fastq_for--max>
+//  filter out reads if their numeric ID is in this fastq file
+// OR if flt_mappings was given too, filter out reads if their ID
+// is NOT in this fastq file
+extern std::string flt_reads;
+
+//prep_reads special usage: filter out mappings whose read ID
+//is NOT found in the flt_reads file, and write them into
+// aux_outfile; also reverses the flt_reads filter itself
+extern std::string flt_mappings;
 
 enum eLIBRARY_TYPE
   {
@@ -137,15 +150,21 @@ class FZPipe {
 	   //this constructor is only to use FZPipe as a READER
        //also accepts/recognizes BAM files
 	   //for which it only stores the filename, other fields/methods are unused
-	   is_bam=false;
-       if (is_mapping && getFext(fname) == "bam") {
+	   openRead(fname, is_mapping);
+	   }
+
+   void openRead(std::string& fname, bool is_mapping) {
+     filename=fname;
+     pipecmd="";
+     is_bam=false;
+     if (is_mapping && getFext(fname) == "bam") {
            file=(FILE*)this;
            is_bam=true;
            return;
            }
-  	   pipecmd=getUnpackCmd(fname); //also bam2fastx
-       this->openRead(fname.c_str(), pipecmd);
-	   }
+     pipecmd=getUnpackCmd(fname); //also bam2fastx
+     this->openRead(fname.c_str(), pipecmd);
+     }
 
 	 FZPipe():filename(),pipecmd() {
 	   is_bam=false;

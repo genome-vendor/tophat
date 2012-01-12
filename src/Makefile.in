@@ -49,8 +49,9 @@ bin_PROGRAMS = prep_reads$(EXEEXT) tophat_reports$(EXEEXT) \
 	juncs_db$(EXEEXT) gtf_juncs$(EXEEXT) extract_reads$(EXEEXT) \
 	segment_juncs$(EXEEXT) closure_juncs$(EXEEXT) \
 	long_spanning_reads$(EXEEXT) fix_map_ordering$(EXEEXT) \
-	bam_merge$(EXEEXT) bam2fastx$(EXEEXT) library_stats$(EXEEXT) \
-	mask_sam$(EXEEXT) wiggles$(EXEEXT) sam_juncs$(EXEEXT)
+	bam_merge$(EXEEXT) bam2fastx$(EXEEXT) gtf_to_fasta$(EXEEXT) \
+	map2gtf$(EXEEXT) library_stats$(EXEEXT) mask_sam$(EXEEXT) \
+	wiggles$(EXEEXT) sam_juncs$(EXEEXT)
 subdir = src
 DIST_COMMON = $(dist_bin_SCRIPTS) $(noinst_HEADERS) \
 	$(srcdir)/Makefile.am $(srcdir)/Makefile.in
@@ -105,6 +106,10 @@ am_gtf_juncs_OBJECTS = gtf_juncs.$(OBJEXT)
 gtf_juncs_OBJECTS = $(am_gtf_juncs_OBJECTS)
 gtf_juncs_DEPENDENCIES = $(top_builddir)/src/libtophat.a libgc.a \
 	$(am__DEPENDENCIES_1)
+am_gtf_to_fasta_OBJECTS = GTFToFasta.$(OBJEXT) FastaTools.$(OBJEXT)
+gtf_to_fasta_OBJECTS = $(am_gtf_to_fasta_OBJECTS)
+gtf_to_fasta_DEPENDENCIES = $(top_builddir)/src/libtophat.a libgc.a \
+	$(am__DEPENDENCIES_1)
 am_juncs_db_OBJECTS = juncs_db.$(OBJEXT)
 juncs_db_OBJECTS = $(am_juncs_db_OBJECTS)
 juncs_db_DEPENDENCIES = $(top_builddir)/src/libtophat.a \
@@ -116,6 +121,10 @@ library_stats_DEPENDENCIES = $(top_builddir)/src/libtophat.a \
 am_long_spanning_reads_OBJECTS = long_spanning_reads.$(OBJEXT)
 long_spanning_reads_OBJECTS = $(am_long_spanning_reads_OBJECTS)
 long_spanning_reads_DEPENDENCIES = $(top_builddir)/src/libtophat.a \
+	$(am__DEPENDENCIES_1)
+am_map2gtf_OBJECTS = map2gtf.$(OBJEXT)
+map2gtf_OBJECTS = $(am_map2gtf_OBJECTS)
+map2gtf_DEPENDENCIES = $(top_builddir)/src/libtophat.a libgc.a \
 	$(am__DEPENDENCIES_1)
 am_mask_sam_OBJECTS = mask_sam.$(OBJEXT)
 mask_sam_OBJECTS = $(am_mask_sam_OBJECTS)
@@ -159,20 +168,20 @@ SOURCES = $(libgc_a_SOURCES) $(libtophat_a_SOURCES) \
 	$(bam2fastx_SOURCES) $(bam_merge_SOURCES) \
 	$(closure_juncs_SOURCES) $(extract_reads_SOURCES) \
 	$(fix_map_ordering_SOURCES) $(gtf_juncs_SOURCES) \
-	$(juncs_db_SOURCES) $(library_stats_SOURCES) \
-	$(long_spanning_reads_SOURCES) $(mask_sam_SOURCES) \
-	$(prep_reads_SOURCES) $(sam_juncs_SOURCES) \
-	$(segment_juncs_SOURCES) $(tophat_reports_SOURCES) \
-	$(wiggles_SOURCES)
+	$(gtf_to_fasta_SOURCES) $(juncs_db_SOURCES) \
+	$(library_stats_SOURCES) $(long_spanning_reads_SOURCES) \
+	$(map2gtf_SOURCES) $(mask_sam_SOURCES) $(prep_reads_SOURCES) \
+	$(sam_juncs_SOURCES) $(segment_juncs_SOURCES) \
+	$(tophat_reports_SOURCES) $(wiggles_SOURCES)
 DIST_SOURCES = $(libgc_a_SOURCES) $(libtophat_a_SOURCES) \
 	$(bam2fastx_SOURCES) $(bam_merge_SOURCES) \
 	$(closure_juncs_SOURCES) $(extract_reads_SOURCES) \
 	$(fix_map_ordering_SOURCES) $(gtf_juncs_SOURCES) \
-	$(juncs_db_SOURCES) $(library_stats_SOURCES) \
-	$(long_spanning_reads_SOURCES) $(mask_sam_SOURCES) \
-	$(prep_reads_SOURCES) $(sam_juncs_SOURCES) \
-	$(segment_juncs_SOURCES) $(tophat_reports_SOURCES) \
-	$(wiggles_SOURCES)
+	$(gtf_to_fasta_SOURCES) $(juncs_db_SOURCES) \
+	$(library_stats_SOURCES) $(long_spanning_reads_SOURCES) \
+	$(map2gtf_SOURCES) $(mask_sam_SOURCES) $(prep_reads_SOURCES) \
+	$(sam_juncs_SOURCES) $(segment_juncs_SOURCES) \
+	$(tophat_reports_SOURCES) $(wiggles_SOURCES)
 HEADERS = $(noinst_HEADERS)
 ETAGS = etags
 CTAGS = ctags
@@ -760,6 +769,9 @@ noinst_HEADERS = \
 	GHash.hh \
 	GList.hh \
 	GStr.h \
+	FastaTools.h \
+	GTFToFasta.h \
+	map2gtf.h \
 	bwt_map.h \
 	wiggles.h \
 	junctions.h \
@@ -845,6 +857,12 @@ wiggles_LDFLAGS = $(BAM_LDFLAGS)
 sam_juncs_SOURCES = sam_juncs.cpp
 sam_juncs_LDADD = $(top_builddir)/src/libtophat.a $(BAM_LIB)
 sam_juncs_LDFLAGS = $(BAM_LDFLAGS)
+map2gtf_SOURCES = map2gtf.cpp
+map2gtf_LDADD = $(top_builddir)/src/libtophat.a libgc.a $(BAM_LIB)
+map2gtf_LDFLAGS = $(BAM_LDFLAGS)
+gtf_to_fasta_SOURCES = GTFToFasta.cpp FastaTools.cpp
+gtf_to_fasta_LDADD = $(top_builddir)/src/libtophat.a libgc.a $(BAM_LIB)
+gtf_to_fasta_LDFLAGS = $(BAM_LDFLAGS)
 all: all-am
 
 .SUFFIXES:
@@ -930,6 +948,9 @@ fix_map_ordering$(EXEEXT): $(fix_map_ordering_OBJECTS) $(fix_map_ordering_DEPEND
 gtf_juncs$(EXEEXT): $(gtf_juncs_OBJECTS) $(gtf_juncs_DEPENDENCIES) 
 	@rm -f gtf_juncs$(EXEEXT)
 	$(CXXLINK) $(gtf_juncs_LDFLAGS) $(gtf_juncs_OBJECTS) $(gtf_juncs_LDADD) $(LIBS)
+gtf_to_fasta$(EXEEXT): $(gtf_to_fasta_OBJECTS) $(gtf_to_fasta_DEPENDENCIES) 
+	@rm -f gtf_to_fasta$(EXEEXT)
+	$(CXXLINK) $(gtf_to_fasta_LDFLAGS) $(gtf_to_fasta_OBJECTS) $(gtf_to_fasta_LDADD) $(LIBS)
 juncs_db$(EXEEXT): $(juncs_db_OBJECTS) $(juncs_db_DEPENDENCIES) 
 	@rm -f juncs_db$(EXEEXT)
 	$(CXXLINK) $(juncs_db_LDFLAGS) $(juncs_db_OBJECTS) $(juncs_db_LDADD) $(LIBS)
@@ -939,6 +960,9 @@ library_stats$(EXEEXT): $(library_stats_OBJECTS) $(library_stats_DEPENDENCIES)
 long_spanning_reads$(EXEEXT): $(long_spanning_reads_OBJECTS) $(long_spanning_reads_DEPENDENCIES) 
 	@rm -f long_spanning_reads$(EXEEXT)
 	$(CXXLINK) $(long_spanning_reads_LDFLAGS) $(long_spanning_reads_OBJECTS) $(long_spanning_reads_LDADD) $(LIBS)
+map2gtf$(EXEEXT): $(map2gtf_OBJECTS) $(map2gtf_DEPENDENCIES) 
+	@rm -f map2gtf$(EXEEXT)
+	$(CXXLINK) $(map2gtf_LDFLAGS) $(map2gtf_OBJECTS) $(map2gtf_LDADD) $(LIBS)
 mask_sam$(EXEEXT): $(mask_sam_OBJECTS) $(mask_sam_DEPENDENCIES) 
 	@rm -f mask_sam$(EXEEXT)
 	$(CXXLINK) $(mask_sam_LDFLAGS) $(mask_sam_OBJECTS) $(mask_sam_LDADD) $(LIBS)
@@ -983,9 +1007,11 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/FastaTools.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GBase.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GFaSeqGet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GStr.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GTFToFasta.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/align_status.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/alphabet.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/bam2fastx.Po@am__quote@
@@ -1007,6 +1033,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/junctions.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/library_stats.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/long_spanning_reads.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/map2gtf.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mask_sam.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/prep_reads.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/qual.Po@am__quote@

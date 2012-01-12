@@ -101,14 +101,14 @@ uint32_t min_closure_exon_length = 100;
 int island_extension = 25;
 int segment_length = 25;
 int segment_mismatches = 2;
-
+int max_read_mismatches = 2;
 int max_splice_mismatches = 1;
 
 ReadFormat reads_format = FASTQ;
 
 bool verbose = false;
 
-int max_multihits = 40;
+unsigned int max_multihits = 40;
 bool no_closure_search = false;
 bool no_coverage_search = false;
 bool no_microexon_search = false;
@@ -134,6 +134,9 @@ bool color = false;
 bool color_out = false;
 
 string gtf_juncs = "";
+
+string flt_reads = "";
+string flt_mappings = "";
 
 eLIBRARY_TYPE library_type = LIBRARY_TYPE_NONE;
 
@@ -221,7 +224,7 @@ char* get_token(char** str, const char* delims)
 }
 
 
-const char *short_options = "QCp:z:";
+const char *short_options = "QCp:z:N:";
 
 enum
   {
@@ -241,6 +244,7 @@ enum
     OPT_NO_COVERAGE_SEARCH,
     OPT_NO_MICROEXON_SEARCH,
     OPT_SEGMENT_LENGTH,
+    OPT_READ_MISMATCHES,
     OPT_SEGMENT_MISMATCHES,
     OPT_MIN_CLOSURE_EXON,
     OPT_MAX_CLOSURE_INTRON,
@@ -268,7 +272,9 @@ enum
     OPT_ZPACKER,
     OPT_SAMTOOLS,
     OPT_AUX_OUT,
-    OPT_GTF_JUNCS
+    OPT_GTF_JUNCS,
+    OPT_FILTER_READS,
+    OPT_FILTER_HITS
   };
 
 static struct option long_options[] = {
@@ -290,6 +296,7 @@ static struct option long_options[] = {
 {"no-microexon-search",	no_argument,		0,  OPT_NO_MICROEXON_SEARCH},
 {"segment-length",	required_argument,	0,  OPT_SEGMENT_LENGTH},
 {"segment-mismatches",	required_argument,	0,  OPT_SEGMENT_MISMATCHES},
+{"max-mismatches",  required_argument,  0,  OPT_READ_MISMATCHES},
 {"min-closure-exon",	required_argument,	0,  OPT_MIN_CLOSURE_EXON},
 {"min-closure-intron",	required_argument,	0,  OPT_MIN_CLOSURE_INTRON},
 {"max-closure-intron",	required_argument,	0,  OPT_MAX_CLOSURE_INTRON},
@@ -316,6 +323,8 @@ static struct option long_options[] = {
 {"samtools", required_argument, 0, OPT_SAMTOOLS},
 {"aux-outfile", required_argument, 0, OPT_AUX_OUT},
 {"gtf-juncs", required_argument, 0, OPT_GTF_JUNCS},
+{"flt-reads",required_argument, 0, OPT_FILTER_READS},
+{"flt-hits",required_argument, 0, OPT_FILTER_HITS},
 {0, 0, 0, 0} // terminator
 };
 
@@ -390,6 +399,10 @@ int parse_options(int argc, char** argv, void (*print_usage)())
       break;
     case OPT_SEGMENT_MISMATCHES:
       segment_mismatches = parseIntOpt(0, "--segment-mismatches arg must be at least 0", print_usage);
+      break;
+    case 'N':
+    case OPT_READ_MISMATCHES:
+      max_read_mismatches = parseIntOpt(0, "--max-mismatches arg must be at least 0", print_usage);
       break;
     case OPT_MIN_CLOSURE_EXON:
       min_closure_exon_length = parseIntOpt(1, "--min-closure-exon arg must be at least 1", print_usage);
@@ -489,6 +502,12 @@ int parse_options(int argc, char** argv, void (*print_usage)())
       break;
     case OPT_GTF_JUNCS:
       gtf_juncs = optarg;
+      break;
+    case OPT_FILTER_READS:
+      flt_reads = optarg;
+      break;
+    case OPT_FILTER_HITS:
+      flt_mappings = optarg;
       break;
     default:
       print_usage();
@@ -653,6 +672,8 @@ void err_die(const char* format,...) { // Error exit
 
 string getUnpackCmd(const string& fname, bool use_all_cpus) {
  //prep_reads should use guess_packer() instead
+  //otherwise compressed files MUST have the .z extension,
+  //as they are all internally generated
  string pipecmd("");
  string fext=getFext(fname);
  if (fext=="bam") {
@@ -660,7 +681,7 @@ string getUnpackCmd(const string& fname, bool use_all_cpus) {
     return pipecmd;
     }
  if (zpacker.empty() || fext!="z") { 
-      return pipecmd;
+      return pipecmd; //no packer used
       }
  pipecmd=zpacker;
  if (str_endsWith(pipecmd, "pigz") ||str_endsWith(pipecmd, "pbzip2")) {

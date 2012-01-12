@@ -466,6 +466,8 @@ bin_PROGRAMS = \
 	fix_map_ordering \
 	bam_merge \
 	bam2fastx \
+	gtf_to_fasta \
+	map2gtf \
 	library_stats \
 	mask_sam \
 	wiggles \
@@ -498,6 +500,9 @@ noinst_HEADERS = \
 	GHash.hh \
 	GList.hh \
 	GStr.h \
+	FastaTools.h \
+	GTFToFasta.h \
+	map2gtf.h \
 	bwt_map.h \
 	wiggles.h \
 	junctions.h \
@@ -598,3 +603,11 @@ wiggles_LDFLAGS = $(BAM_LDFLAGS)
 sam_juncs_SOURCES = sam_juncs.cpp
 sam_juncs_LDADD = $(top_builddir)/src/libtophat.a $(BAM_LIB)
 sam_juncs_LDFLAGS = $(BAM_LDFLAGS)
+
+map2gtf_SOURCES = map2gtf.cpp
+map2gtf_LDADD = $(top_builddir)/src/libtophat.a libgc.a $(BAM_LIB)
+map2gtf_LDFLAGS = $(BAM_LDFLAGS)
+
+gtf_to_fasta_SOURCES = GTFToFasta.cpp FastaTools.cpp
+gtf_to_fasta_LDADD = $(top_builddir)/src/libtophat.a libgc.a $(BAM_LIB)
+gtf_to_fasta_LDFLAGS = $(BAM_LDFLAGS)
