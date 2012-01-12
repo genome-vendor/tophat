@@ -1,0 +1,12 @@
+Source: tophat1.3.1alt
+Section: science
+Priority: optional
+Build-Depends: debhelper (>= 7), libbam-dev, zlib1g-dev
+Maintainer: Matthew Callaway <mcallawa@genome.wustl.edu>
+Homepage: http://tophat.cbcb.umd.edu/
+
+Package: tophat1.3.1alt
+Architecture: amd64
+Depends: zlib1g
+Description: TopHat is a program that aligns RNA-Seq reads to a genome in order to identify exon-exon splice junctions.
+ TopHat is a program that aligns RNA-Seq reads to a genome in order to identify exon-exon splice junctions. It is built on the ultrafast short read mapping program Bowtie. TopHat runs on Linux and OS X.
