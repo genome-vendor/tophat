@@ -99,10 +99,6 @@ SAM Header Options (for embedding sequencing run metadata in output):
     --rg-center                    <string>    (sequencing center name)
     --rg-date                      <string>    (ISO 8601 date of the sequencing run)
     --rg-platform                  <string>    (Sequencing platform descriptor)
-    
-    
-Added Options
-    --best                                     aligns with bowties best strata tryhard
 '''
 
 class Usage(Exception):
@@ -609,7 +605,6 @@ class TopHatParams:
                                          "insertions=",
                                          "deletions=",
                                          "no-sort-bam",
-                                         "best",
                                          "no-convert-bam"])
         except getopt.error, msg:
             raise Usage(msg)
@@ -682,8 +677,6 @@ class TopHatParams:
                 custom_out_dir = value + "/"
             if option == "--tmp-dir":
                 custom_tmp_dir = value + "/"
-            if option == "--best":
-                self.best = True
 
         if custom_out_dir != None:
             output_dir = custom_out_dir
@@ -1452,8 +1445,6 @@ def bowtie(params,
 
         if params.read_params.color:
             bowtie_cmd += ["-C", "--col-keepends"]
-        if params.best:#added by Ido
-            bowtie_cmd += ["--best", "--tryhard", "--strata"]
         unzip_cmd=None
         if use_zpacker:
           unzip_cmd=[ params.system_params.zipper ]
