@@ -2820,8 +2820,10 @@ def which(program):
     return None
 
 def prog_path(program):
-    progpath=which(program)
+    progpath=which(program + get_version())
     if progpath == None:
+        progpath=which(program)
+        if progpath == None:
         die("Error locating program: "+program)
     return progpath
 
