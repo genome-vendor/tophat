@@ -2824,7 +2824,7 @@ def prog_path(program):
     if progpath == None:
         progpath=which(program)
         if progpath == None:
-        die("Error locating program: "+program)
+            die("Error locating program: "+program)
     return progpath
 
 # FIXME: this should get set during the make dist autotools phase of the build
