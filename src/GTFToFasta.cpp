@@ -4,7 +4,6 @@
 //
 //  Created by Harold Pimentel on 10/26/11.
 //
-
 #include "GTFToFasta.h"
 
 

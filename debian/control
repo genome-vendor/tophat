@@ -1,12 +1,15 @@
-Source: tophat1.4.0
+Source: tophat2.0.0
 Section: science
 Priority: optional
-Build-Depends: debhelper (>= 7), autoconf, libbam-dev, zlib1g-dev
-Maintainer: Matthew Callaway <mcallawa@genome.wustl.edu>
+Build-Depends: debhelper (>= 7), autoconf, libbam-dev (>= 0.1.16-2), zlib1g-dev, libboost-dev (>= 1.38), python (>= 2.4), libboost-thread-dev
+Maintainer: The Genome Institute <gmt@genome.wustl.edu>
+Uploaders: Thomas Mooney <tmooney@genome.wustl.edu>
+    Matthew Callaway <mcallawa@genome.wustl.edu>
 Homepage: http://tophat.cbcb.umd.edu/
 
-Package: tophat1.4.0
+Package: tophat2.0.0
 Architecture: amd64
-Depends: zlib1g
-Description: TopHat is a program that aligns RNA-Seq reads to a genome in order to identify exon-exon splice junctions.
+Depends: zlib1g, libboost-dev (>= 1.38), python (>= 2.4), bowtie2, libboost-thread-dev
+Provides: tophat
+Description: Aligns RNA-Seq reads to a genome to identify splice junctions.
  TopHat is a program that aligns RNA-Seq reads to a genome in order to identify exon-exon splice junctions. It is built on the ultrafast short read mapping program Bowtie. TopHat runs on Linux and OS X.

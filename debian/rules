@@ -1,13 +1,26 @@
 #!/usr/bin/make -f
 
 PKG=$(shell dh_listpackages)
-VERSION=1.4.0
+VER="2.0.0"
+DEB_DIR=debian/${PKG}
+PWD=$(CURDIR)
+DEB_INST_DIR=${PWD}/${DEB_DIR}/usr/lib/${PKG}
 
 %:
 	dh $@
 
+build:
+	./configure --prefix=${DEB_INST_DIR}
+	make
+
+override_dh_auto_configure:
+	echo ""
+
 override_dh_auto_install:
-	dh_auto_install
-	for FILE in ./debian/$(PKG)/usr/bin/*; do \
-	  mv $$FILE ./debian/$(PKG)/usr/bin/`basename $$FILE`$(VERSION); \
+	mkdir -p ${DEB_DIR}/usr/bin
+	make install
+	for filename in ${DEB_INST_DIR}/bin/*; do \
+		file=`basename $${filename}`; \
+		echo "export PATH=/usr/lib/${PKG}/bin:\$$PATH; exec $$file" > ${DEB_DIR}/usr/bin/$${file}${VER}; \
 	done
+

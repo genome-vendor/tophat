@@ -1,3 +1,9 @@
+tophat2.0.0 (2.0.0-1) unstable; urgency=low
+
+  * New upstream major version
+
+ -- Thomas Mooney <tmooney@genome.wustl.edu>  Tue, 01 May 2012 14:21:30 -0500
+
 tophat1.4.0 (1.4.0-1) unstable; urgency=low
 
   * Latest upstream
