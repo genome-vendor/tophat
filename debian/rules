@@ -4,7 +4,8 @@ PKG=$(shell dh_listpackages)
 VER="2.0.0"
 DEB_DIR=debian/${PKG}
 PWD=$(CURDIR)
-DEB_INST_DIR=${PWD}/${DEB_DIR}/usr/lib/${PKG}
+FINAL_INST_DIR=/usr/lib/${PKG}
+DEB_INST_DIR=${PWD}/${DEB_DIR}${FINAL_INST_DIR}
 
 %:
 	dh $@
@@ -19,8 +20,12 @@ override_dh_auto_configure:
 override_dh_auto_install:
 	mkdir -p ${DEB_DIR}/usr/bin
 	make install
+	mv ${DEB_INST_DIR}/bin/tophat2 ${DEB_INST_DIR}/bin/tophat2.debpath
+	sed -e 's|$(DEB_INST_DIR)|$(FINAL_INST_DIR)|' ${DEB_INST_DIR}/bin/tophat2.debpath > ${DEB_INST_DIR}/bin/tophat2
+	rm ${DEB_INST_DIR}/bin/tophat2.debpath
+	chmod 555 ${DEB_INST_DIR}/bin/tophat2
 	for filename in ${DEB_INST_DIR}/bin/*; do \
 		file=`basename $${filename}`; \
-		echo "export PATH=/usr/lib/${PKG}/bin:\$$PATH; exec $$file" > ${DEB_DIR}/usr/bin/$${file}${VER}; \
+		echo "export PATH=/usr/lib/${PKG}/bin:\$$PATH; exec $$file \$$@" > ${DEB_DIR}/usr/bin/$${file}${VER}; \
 	done
 
