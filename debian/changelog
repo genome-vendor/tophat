@@ -1,3 +1,9 @@
+tophat2.0.0 (2.0.0-3) unstable; urgency=low
+
+  * Add shebang line to wrapper scripts
+
+ -- Thomas Mooney <tmooney@genome.wustl.edu>  Mon, 14 May 2012 13:19:11 -0500
+
 tophat2.0.0 (2.0.0-2) unstable; urgency=low
 
   * Packaging fixes to "tophat2" wrapper script

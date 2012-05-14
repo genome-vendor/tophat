@@ -26,6 +26,6 @@ override_dh_auto_install:
 	chmod 555 ${DEB_INST_DIR}/bin/tophat2
 	for filename in ${DEB_INST_DIR}/bin/*; do \
 		file=`basename $${filename}`; \
-		echo "export PATH=/usr/lib/${PKG}/bin:\$$PATH; exec $$file \$$@" > ${DEB_DIR}/usr/bin/$${file}${VER}; \
+		echo "#!/bin/sh\nexport PATH=/usr/lib/${PKG}/bin:\$$PATH; exec $$file \$$@" > ${DEB_DIR}/usr/bin/$${file}${VER}; \
 	done
 
