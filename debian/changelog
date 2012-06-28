@@ -1,3 +1,9 @@
+tophat1.4.0 (1.4.0-2) lucid; urgency=low
+
+  * cleaned up rules and fixed /usr/bin/*
+
+ -- Nathaniel Nutter <nnutter@genome.wustl.edu>  Thu, 28 Jun 2012 11:25:03 -0500
+
 tophat1.4.0 (1.4.0-1) unstable; urgency=low
 
   * Latest upstream
