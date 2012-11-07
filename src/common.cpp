@@ -14,18 +14,20 @@
 #include <iostream>
 #include <sstream>
 #include <cstdarg>
+#include <limits>
 #include <getopt.h>
-
-#include "common.h"
-
-using namespace std;
-
-#ifdef MEM_DEBUG 
-//function for debugging memory usage of current program in Linux
 
 #include <unistd.h>
 #include <ios>
 #include <fstream>
+
+using namespace std;
+
+#include "common.h"
+#include "tokenize.h"
+
+#ifdef MEM_DEBUG
+//function for debugging memory usage of current program in Linux
 
 //////////////////////////////////////////////////////////////////////////////
 // process_mem_usage(double &, double &) - takes two doubles by reference,
@@ -74,14 +76,31 @@ void print_mem_usage() {
   }
 #endif
 
+bool bowtie2 = true;
+int bowtie2_min_score = -10;
+
+//FIXME: experimental score threshold (activated by the hidden -W option)
+//for "soft" filtering in fix_map_ordering
+//should be removed if a bowtie2 min-score function is used instead
+int bowtie2_scoreflt  = 0; 
+
+int bowtie2_max_penalty = 6;
+int bowtie2_min_penalty = 2;
+int bowtie2_penalty_for_N = 1;
+int bowtie2_read_gap_open = 5;
+int bowtie2_read_gap_cont = 3;
+int bowtie2_ref_gap_open = 5;
+int bowtie2_ref_gap_cont = 3;
+
+// daehwan - temporary
+bool parallel = true;
 
 unsigned int max_insertion_length = 3;
 unsigned int max_deletion_length = 3;
 
-
 int inner_dist_mean = 200;
 int inner_dist_std_dev = 20;
-int max_mate_inner_dist = -1; 
+int max_mate_inner_dist = -1;
 
 int min_anchor_len = 8;
 int min_report_intron_length = 50;
@@ -96,28 +115,36 @@ int max_coverage_intron_length = 20000;
 int min_segment_intron_length = 50;
 int max_segment_intron_length = 500000;
 
-uint32_t min_closure_exon_length = 100; 
+uint32_t min_closure_exon_length = 100;
 
 int island_extension = 25;
 int segment_length = 25;
 int segment_mismatches = 2;
-int max_read_mismatches = 2;
+int read_mismatches = 2;
+int read_gap_length = 2;
+int read_edit_dist = 2;
+int read_realign_edit_dist = 2;
 int max_splice_mismatches = 1;
 
 ReadFormat reads_format = FASTQ;
 
 bool verbose = false;
 
-unsigned int max_multihits = 40;
+unsigned int max_multihits = 20;
+bool suppress_hits = false;
+unsigned int max_seg_multihits = 40;
 bool no_closure_search = false;
 bool no_coverage_search = false;
 bool no_microexon_search = false;
 bool butterfly_search = false;
-int num_cpus = 1;
+int num_threads = 1;
+
 float min_isoform_fraction = 0.15f;
 
 string output_dir = "tophat_out";
+string std_outfile = "";
 string aux_outfile = ""; //auxiliary output file name (e.g. prep_reads read stats)
+string index_outfile = "";
 string gene_filter = "";
 string gff_file = "";
 string ium_reads = "";
@@ -131,12 +158,24 @@ bool phred64_quals = false;
 bool quals = false;
 bool integer_quals = false;
 bool color = false;
-bool color_out = false;
-
 string gtf_juncs = "";
+
+bool report_secondary_alignments = false;
+bool report_discordant_pair_alignments = false;
+bool report_mixed_alignments = false;
 
 string flt_reads = "";
 string flt_mappings = "";
+int flt_side = 2;
+
+bool fusion_search = false;
+size_t fusion_anchor_length = 20;
+size_t fusion_min_dist = 10000000;
+size_t fusion_read_mismatches = 2;
+size_t fusion_multireads = 2;
+size_t fusion_multipairs = 2;
+std::vector<std::string> fusion_ignore_chromosomes;
+bool fusion_do_not_resolve_conflicts = false;
 
 eLIBRARY_TYPE library_type = LIBRARY_TYPE_NONE;
 
@@ -174,22 +213,22 @@ int parseIntOpt(int lower, const char *errmsg, void (*print_usage)()) {
 static float parseFloatOpt(float lower, float upper, const char *errmsg, void (*print_usage)()) {
     float l;
     l = (float)atof(optarg);
-	
+
     if (l < lower) {
         cerr << errmsg << endl;
         print_usage();
         exit(1);
     }
-	
+
     if (l > upper)
     {
         cerr << errmsg << endl;
         print_usage();
         exit(1);
     }
-	
+
     return l;
-	
+
     cerr << errmsg << endl;
     print_usage();
     exit(1);
@@ -205,7 +244,7 @@ char* get_token(char** str, const char* delims)
   char* token;
   if (*str == NULL)
       return NULL;
-  
+
   token = *str;
   while (**str != '\0')
     {
@@ -215,16 +254,15 @@ char* get_token(char** str, const char* delims)
 	  ++(*str);
 	  return token;
 	}
-    
+
       ++(*str);
     }
-  
+
   *str = NULL;
   return token;
 }
 
-
-const char *short_options = "QCp:z:N:";
+const char *short_options = "QCp:z:N:w:W:";
 
 enum
   {
@@ -240,11 +278,16 @@ enum
     OPT_GENE_FILTER,
     OPT_GFF_ANNOTATIONS,
     OPT_MAX_MULTIHITS,
+    OPT_SUPPRESS_HITS,
+    OPT_MAX_SEG_MULTIHITS,
     OPT_NO_CLOSURE_SEARCH,
     OPT_NO_COVERAGE_SEARCH,
     OPT_NO_MICROEXON_SEARCH,
     OPT_SEGMENT_LENGTH,
     OPT_READ_MISMATCHES,
+    OPT_READ_GAP_LENGTH,
+    OPT_READ_EDIT_DIST,
+    OPT_READ_REALIGN_EDIT_DIST,
     OPT_SEGMENT_MISMATCHES,
     OPT_MIN_CLOSURE_EXON,
     OPT_MAX_CLOSURE_INTRON,
@@ -264,17 +307,40 @@ enum
     OPT_QUALS,
     OPT_INTEGER_QUALS,
     OPT_COLOR,
-    OPT_COLOR_OUT,
     OPT_LIBRARY_TYPE,
     OPT_MAX_DELETION_LENGTH,
     OPT_MAX_INSERTION_LENGTH,
-    OPT_NUM_CPUS,
+    OPT_NUM_THREADS,
     OPT_ZPACKER,
     OPT_SAMTOOLS,
     OPT_AUX_OUT,
+    OPT_STD_OUT,
+    OPT_INDEX_OUT,
     OPT_GTF_JUNCS,
     OPT_FILTER_READS,
-    OPT_FILTER_HITS
+    OPT_FILTER_HITS,
+    OPT_FILTER_SIDE,
+    OPT_REPORT_SECONDARY_ALIGNMENTS,
+    OPT_REPORT_DISCORDANT_PAIR_ALIGNMENTS,
+    OPT_REPORT_MIXED_ALIGNMENTS,
+    OPT_FUSION_SEARCH,
+    OPT_FUSION_ANCHOR_LENGTH,
+    OPT_FUSION_MIN_DIST,
+    OPT_FUSION_READ_MISMATCHES,
+    OPT_FUSION_MULTIREADS,
+    OPT_FUSION_MULTIPAIRS,
+    OPT_FUSION_IGNORE_CHROMOSOMES,
+    OPT_FUSION_DO_NOT_RESOLVE_CONFLICTS,
+    OPT_BOWTIE1,
+    OPT_BOWTIE2_MIN_SCORE,
+    OPT_BOWTIE2_MAX_PENALTY,
+    OPT_BOWTIE2_MIN_PENALTY,
+    OPT_BOWTIE2_PENALTY_FOR_N,
+    OPT_BOWTIE2_READ_GAP_OPEN,
+    OPT_BOWTIE2_READ_GAP_CONT,
+    OPT_BOWTIE2_REF_GAP_OPEN,
+    OPT_BOWTIE2_REF_GAP_CONT,
+    OPT_BOWTIE2_SCOREFLT 
   };
 
 static struct option long_options[] = {
@@ -291,12 +357,17 @@ static struct option long_options[] = {
 {"gene-filter",		required_argument,	0,	OPT_GENE_FILTER},
 {"gtf-annotations",	required_argument,	0,	OPT_GFF_ANNOTATIONS},
 {"max-multihits",	required_argument,	0,  OPT_MAX_MULTIHITS},
+{"suppress-hits",	no_argument,	0,  OPT_SUPPRESS_HITS},
+{"max-seg-multihits",	required_argument,	0,  OPT_MAX_SEG_MULTIHITS},
 {"no-closure-search",	no_argument,		0,  OPT_NO_CLOSURE_SEARCH},
 {"no-coverage-search",	no_argument,		0,  OPT_NO_COVERAGE_SEARCH},
 {"no-microexon-search",	no_argument,		0,  OPT_NO_MICROEXON_SEARCH},
 {"segment-length",	required_argument,	0,  OPT_SEGMENT_LENGTH},
 {"segment-mismatches",	required_argument,	0,  OPT_SEGMENT_MISMATCHES},
-{"max-mismatches",  required_argument,  0,  OPT_READ_MISMATCHES},
+{"read-mismatches",  required_argument,  0,  OPT_READ_MISMATCHES},
+{"read-gap-length",  required_argument,  0,  OPT_READ_GAP_LENGTH},
+{"read-edit-dist",  required_argument,  0,  OPT_READ_EDIT_DIST},
+{"read-realign-edit-dist",  required_argument,  0,  OPT_READ_REALIGN_EDIT_DIST},
 {"min-closure-exon",	required_argument,	0,  OPT_MIN_CLOSURE_EXON},
 {"min-closure-intron",	required_argument,	0,  OPT_MIN_CLOSURE_INTRON},
 {"max-closure-intron",	required_argument,	0,  OPT_MAX_CLOSURE_INTRON},
@@ -314,25 +385,67 @@ static struct option long_options[] = {
 {"quals",		no_argument,		0,	OPT_QUALS},
 {"integer-quals",	no_argument,		0,	OPT_INTEGER_QUALS},
 {"color",		no_argument,		0,	OPT_COLOR},
-{"color-out",		no_argument,		0,	OPT_COLOR_OUT},
 {"library-type",	required_argument,	0,	OPT_LIBRARY_TYPE},
 {"max-deletion-length", required_argument, 0, OPT_MAX_DELETION_LENGTH},
 {"max-insertion-length", required_argument, 0, OPT_MAX_INSERTION_LENGTH},
-{"num-threads", required_argument, 0, OPT_NUM_CPUS},
+{"num-threads", required_argument, 0, OPT_NUM_THREADS},
 {"zpacker", required_argument, 0, OPT_ZPACKER},
 {"samtools", required_argument, 0, OPT_SAMTOOLS},
 {"aux-outfile", required_argument, 0, OPT_AUX_OUT},
+{"outfile", required_argument, 0, OPT_STD_OUT},
+{"index-outfile", required_argument, 0, OPT_INDEX_OUT},
 {"gtf-juncs", required_argument, 0, OPT_GTF_JUNCS},
 {"flt-reads",required_argument, 0, OPT_FILTER_READS},
 {"flt-hits",required_argument, 0, OPT_FILTER_HITS},
+{"flt-side",required_argument, 0, OPT_FILTER_SIDE},
+{"report-secondary-alignments", no_argument, 0, OPT_REPORT_SECONDARY_ALIGNMENTS},
+{"report-discordant-pair-alignments", no_argument, 0, OPT_REPORT_DISCORDANT_PAIR_ALIGNMENTS},
+{"report-mixed-alignments", no_argument, 0, OPT_REPORT_MIXED_ALIGNMENTS},
+{"fusion-search", no_argument, 0, OPT_FUSION_SEARCH},
+{"fusion-anchor-length", required_argument, 0, OPT_FUSION_ANCHOR_LENGTH},
+{"fusion-min-dist", required_argument, 0, OPT_FUSION_MIN_DIST},
+{"fusion-read-mismatches", required_argument, 0, OPT_FUSION_READ_MISMATCHES},
+{"fusion-multireads", required_argument, 0, OPT_FUSION_MULTIREADS},
+{"fusion-multipairs", required_argument, 0, OPT_FUSION_MULTIPAIRS},
+{"fusion-ignore-chromosomes", required_argument, 0, OPT_FUSION_IGNORE_CHROMOSOMES},
+{"fusion-do-not-resolve-conflicts", no_argument, 0, OPT_FUSION_DO_NOT_RESOLVE_CONFLICTS},
+{"bowtie1", no_argument, 0, OPT_BOWTIE1},
+{"bowtie2-min-score", required_argument, 0, OPT_BOWTIE2_MIN_SCORE},
+{"bowtie2-max-penalty", required_argument, 0, OPT_BOWTIE2_MAX_PENALTY},
+{"bowtie2-min-penalty", required_argument, 0, OPT_BOWTIE2_MIN_PENALTY},
+{"bowtie2-penalty-for-N", required_argument, 0, OPT_BOWTIE2_PENALTY_FOR_N},
+{"bowtie2-read-gap-open", required_argument, 0, OPT_BOWTIE2_READ_GAP_OPEN},
+{"bowtie2-read-gap-cont", required_argument, 0, OPT_BOWTIE2_READ_GAP_CONT},
+{"bowtie2-ref-gap-open", required_argument, 0, OPT_BOWTIE2_REF_GAP_OPEN},
+{"bowtie2-ref-gap-cont", required_argument, 0, OPT_BOWTIE2_REF_GAP_CONT},
 {0, 0, 0, 0} // terminator
 };
 
 
-void str_appendInt(string& str, int v) {
- stringstream ss;
- ss << v;
- str.append(ss.str());
+
+string str_replace(const string& base_str, const string& oldStr, const string& newStr)
+{
+  size_t pos = 0;
+  string str(base_str);
+  while((pos = str.find(oldStr, pos)) != string::npos)
+  {
+     str.replace(pos, oldStr.length(), newStr);
+     pos += newStr.length();
+  }
+  return str;
+}
+
+
+void str_appendInt(string& str, int64_t v) {
+  char int_str[32] = {0};
+  sprintf(int_str, "%ld", v);
+  str += int_str;
+}
+
+void str_appendUInt(string& str, uint64_t v) {
+  char uint_str[32] = {0};
+  sprintf(uint_str, "%lu", v);
+  str += uint_str;
 }
 
 bool str_endsWith(string& str, const char* suffix) {
@@ -350,7 +463,7 @@ int parse_options(int argc, char** argv, void (*print_usage)())
   do {
     next_option = getopt_long(argc, argv, short_options, long_options, &option_index);
     switch (next_option) {
-    case -1:    
+    case -1:
       break;
     case OPT_FASTA:
       reads_format = FASTA;
@@ -363,7 +476,7 @@ int parse_options(int argc, char** argv, void (*print_usage)())
       break;
     case OPT_SPLICE_MISMATCHES:
       max_splice_mismatches = parseIntOpt(0, "--splice-mismatches arg must be at least 0", print_usage);
-      break; 
+      break;
     case OPT_VERBOSE:
       verbose = true;
       break;
@@ -385,6 +498,12 @@ int parse_options(int argc, char** argv, void (*print_usage)())
     case OPT_MAX_MULTIHITS:
       max_multihits = parseIntOpt(1, "--max-multihits arg must be at least 1", print_usage);
       break;
+    case OPT_SUPPRESS_HITS:
+      suppress_hits = true;
+      break;
+    case OPT_MAX_SEG_MULTIHITS:
+      max_seg_multihits = parseIntOpt(1, "--max-seg-multihits arg must be at least 1", print_usage);
+      break;
     case OPT_NO_CLOSURE_SEARCH:
       no_closure_search = true;
       break;
@@ -402,7 +521,16 @@ int parse_options(int argc, char** argv, void (*print_usage)())
       break;
     case 'N':
     case OPT_READ_MISMATCHES:
-      max_read_mismatches = parseIntOpt(0, "--max-mismatches arg must be at least 0", print_usage);
+      read_mismatches = parseIntOpt(0, "--read-mismatches arg must be at least 0", print_usage);
+      break;
+    case OPT_READ_GAP_LENGTH:
+      read_gap_length = parseIntOpt(0, "--read-gap-length arg must be at least 0", print_usage);
+      break;
+    case OPT_READ_EDIT_DIST:
+      read_edit_dist = parseIntOpt(0, "--read-edit-dist arg must be at least 0", print_usage);
+      break;
+    case OPT_READ_REALIGN_EDIT_DIST:
+      read_realign_edit_dist = parseIntOpt(0, "--read-realign-edit-dist arg must be at least 0", print_usage);
       break;
     case OPT_MIN_CLOSURE_EXON:
       min_closure_exon_length = parseIntOpt(1, "--min-closure-exon arg must be at least 1", print_usage);
@@ -463,9 +591,6 @@ int parse_options(int argc, char** argv, void (*print_usage)())
     case OPT_COLOR:
       color = true;
       break;
-    case OPT_COLOR_OUT:
-      color_out = true;
-      break;
     case OPT_LIBRARY_TYPE:
       if (strcmp(optarg, "fr-unstranded") == 0)
 	library_type = FR_UNSTRANDED;
@@ -496,9 +621,16 @@ int parse_options(int argc, char** argv, void (*print_usage)())
     case OPT_AUX_OUT:
       aux_outfile =  optarg;
       break;
+    case 'w':
+    case OPT_STD_OUT:
+      std_outfile =  optarg;
+      break;
+    case OPT_INDEX_OUT:
+      index_outfile =  optarg;
+      break;
     case 'p':
-    case OPT_NUM_CPUS:
-      num_cpus=parseIntOpt(1,"-p/--num-threads must be at least 1",print_usage);
+    case OPT_NUM_THREADS:
+      num_threads=parseIntOpt(1,"-p/--num-threads must be at least 1",print_usage);
       break;
     case OPT_GTF_JUNCS:
       gtf_juncs = optarg;
@@ -509,12 +641,80 @@ int parse_options(int argc, char** argv, void (*print_usage)())
     case OPT_FILTER_HITS:
       flt_mappings = optarg;
       break;
+    case OPT_FILTER_SIDE:
+      flt_side = (optarg[0]=='0') ? 0 : 1;
+      break;
+
+    case OPT_REPORT_SECONDARY_ALIGNMENTS:
+      report_secondary_alignments = true;
+      break;
+    case OPT_REPORT_DISCORDANT_PAIR_ALIGNMENTS:
+      report_discordant_pair_alignments = true;
+      break;
+    case OPT_REPORT_MIXED_ALIGNMENTS:
+      report_mixed_alignments = true;
+      break;
+    case OPT_FUSION_SEARCH:
+      fusion_search = true;
+      break;
+    case OPT_FUSION_ANCHOR_LENGTH:
+      fusion_anchor_length = parseIntOpt(10, "--fusion-anchor-length must be at least 10", print_usage);
+      break;
+    case OPT_FUSION_MIN_DIST:
+      fusion_min_dist = parseIntOpt(0, "--fusion-min-dist must be at least 0", print_usage);
+      break;
+    case OPT_FUSION_READ_MISMATCHES:
+      fusion_read_mismatches = parseIntOpt(0, "--fusion-read-mismatches must be at least 0", print_usage);
+      break;
+    case OPT_FUSION_MULTIREADS:
+      fusion_multireads = parseIntOpt(1, "--fusion-multireads must be at least 1", print_usage);
+      break;
+    case OPT_FUSION_MULTIPAIRS:
+      fusion_multipairs = parseIntOpt(1, "--fusion-multipairs must be at least 0", print_usage);
+      break;
+    case OPT_FUSION_IGNORE_CHROMOSOMES:
+      tokenize(optarg, ",", fusion_ignore_chromosomes);
+      break;
+    case OPT_FUSION_DO_NOT_RESOLVE_CONFLICTS:
+      fusion_do_not_resolve_conflicts = true;
+      break;
+    case OPT_BOWTIE1:
+      bowtie2 = false;
+      break;
+    case OPT_BOWTIE2_MIN_SCORE:
+      bowtie2_min_score = -1 * parseIntOpt(0, "--bowtie2-min-score must be at least 0", print_usage);
+      break;
+    case OPT_BOWTIE2_MAX_PENALTY:
+      bowtie2_max_penalty = parseIntOpt(0, "--bowtie2-max-penalty must be at least 0", print_usage);
+      break;
+    case OPT_BOWTIE2_MIN_PENALTY:
+      bowtie2_min_penalty = parseIntOpt(0, "--bowtie2-min-penalty must be at least 0", print_usage);
+      break;
+    case OPT_BOWTIE2_PENALTY_FOR_N:
+      bowtie2_penalty_for_N = parseIntOpt(0, "--bowtie2-penalty-for-N must be at least 0", print_usage);
+      break;
+    case OPT_BOWTIE2_READ_GAP_OPEN:
+      bowtie2_read_gap_open = parseIntOpt(0, "--bowtie2-read-gap-open must be at least 0", print_usage);
+      break;
+    case OPT_BOWTIE2_READ_GAP_CONT:
+      bowtie2_read_gap_cont = parseIntOpt(0, "--bowtie2-read-gap-cont must be at least 0", print_usage);
+      break;
+    case OPT_BOWTIE2_REF_GAP_OPEN:
+      bowtie2_ref_gap_open = parseIntOpt(0, "--bowtie2-ref-gap-open must be at least 0", print_usage);
+      break;
+    case OPT_BOWTIE2_REF_GAP_CONT:
+      bowtie2_ref_gap_cont = parseIntOpt(0, "--bowtie2-ref-gap-cont must be at least 0", print_usage);
+      break;
+    case 'W':
+    case OPT_BOWTIE2_SCOREFLT:
+      bowtie2_scoreflt = -1 * parseIntOpt(1, "-W option must be at least 1", print_usage);
+      break;
     default:
       print_usage();
       return 1;
     }
   } while(next_option != -1);
-  
+
   return 0;
 }
 
@@ -537,6 +737,7 @@ FILE* FZPipe::openRead(const char* fname, string& popencmd) {
   filename=fname;
   if (pipecmd.empty()) {
        file=fopen(filename.c_str(), "r");
+	   return file;
        }
      else {
        string pcmd(pipecmd);
@@ -546,11 +747,6 @@ FILE* FZPipe::openRead(const char* fname, string& popencmd) {
        file=popen(pcmd.c_str(), "r");
        }
   return file;
-}
-
-FILE* FZPipe::openRead(const char* fname) {
-  string pcmd;
-  return this->openRead(fname,pcmd);
 }
 
 FILE* FZPipe::openWrite(const char* fname, string& popencmd) {
@@ -576,6 +772,14 @@ FILE* FZPipe::openWrite(const char* fname) {
   }
 
 void FZPipe::rewind() {
+  if (is_bam && !filename.empty()) {
+	if (bam_file) {
+	        samclose(bam_file);
+	        bam_file=NULL;
+	        }
+	bam_file=samopen(filename.c_str(), "rb", 0);
+	return;
+  }
   if (pipecmd.empty()) {
       if (file!=NULL) {
            ::rewind(file);
@@ -587,7 +791,7 @@ void FZPipe::rewind() {
           }
       }
   if (filename.empty())
-      err_die("Error: FZStream::rewind() failed (missing filename)!\n");
+      err_die("Error: FZPipe::rewind() failed (missing filename)!\n");
   this->close();
   string pcmd(pipecmd);
   pcmd.append(" '");
@@ -595,7 +799,7 @@ void FZPipe::rewind() {
   pcmd.append("'");
   file=popen(pcmd.c_str(), "r");
   if (file==NULL) {
-    err_die("Error: FZStream::rewind() popen(%s) failed!\n",pcmd.c_str());
+    err_die("Error: FZPipe::rewind() popen(%s) failed!\n",pcmd.c_str());
     }
  }
 
@@ -605,7 +809,9 @@ string getFext(const string& s) {
    //if (xpos!=NULL) *xpos=0;
    if (s.empty() || s=="-") return r;
    int slen=(int)s.length();
-   int p=s.rfind('.');
+   size_t pos=s.rfind('.');
+   if (pos==string::npos) return r;
+   int p=(int)pos;
    int d=s.rfind('/');
    if (p<=0 || p>slen-2 || p<slen-7 || p<d) return r;
    r=s.substr(p+1);
@@ -615,52 +821,15 @@ string getFext(const string& s) {
    return r;
    }
 
-string guess_packer(const string& fname, bool use_all_cpus) {
-   //only needed for the primary input files (given by user)
-   string picmd("");
-   string fext=getFext(fname);
-   if (fext=="bam") {
-     picmd="bam2fastx";
-     return picmd;
-     }
-   if (fext=="gz" || fext=="gzip" || fext=="z") {
-      if (use_all_cpus && str_endsWith(zpacker,"pigz")) {
-           picmd=zpacker;
-           if (num_cpus<2) picmd.append(" -p1");
-                else {
-                  picmd.append(" -p");
-                  str_appendInt(picmd, num_cpus);
-                  //picmd.append(" -cd");
-                  }
-           }
-        else picmd="gzip";
-      }
-     else if (fext=="bz2" || fext=="bzip2" || fext=="bz" || fext=="bzip") {
-      if (use_all_cpus && str_endsWith(zpacker,"pbzip2")) {
-            picmd=zpacker;
-            if (num_cpus<2) picmd.append(" -p1");
-                 else {
-                   picmd.append(" -p");
-                   str_appendInt(picmd, num_cpus);
-                   //picmd.append(" -cd");
-                   }
-            }
-         else picmd="bzip2";
-      }
-  return picmd;
-}
-
-/*
-string getBam2SamCmd(const string& fname) {
-   string pipecmd("");
-   string fext=getFext(fname);
-   if (fext=="bam") {
-      pipecmd=samtools_path;
-      pipecmd.append(" view");
-      }
-  return pipecmd;
-}
-*/
+string getFdir(const string& s) {
+   string r("");
+   //if (xpos!=NULL) *xpos=0;
+   if (s.empty() || s=="-") return r;
+   size_t p=s.rfind('/');
+   if (p==string::npos) return r;
+   r=s.substr(0,p+1);
+   return r;
+   }
 
 void err_die(const char* format,...) { // Error exit
   va_list arguments;
@@ -670,25 +839,68 @@ void err_die(const char* format,...) { // Error exit
   exit(1);
 }
 
+void warn_msg(const char* format,...) {
+  // print message to stderr
+  va_list arguments;
+  va_start(arguments,format);
+  vfprintf(stderr,format,arguments);
+  va_end(arguments);
+}
+
+string guess_packer(const string& fname, bool use_all_cpus) {
+   //only needed for the primary input files (given by user)
+   string picmd("");
+   string fext=getFext(fname);
+   //if (fext=="bam") {
+   //  picmd="bam2fastx";
+   //  return picmd;
+   //  }
+   if (fext=="gz" || fext=="gzip" || fext=="z") {
+      if (use_all_cpus && str_endsWith(zpacker,"pigz")) {
+           picmd=zpacker;
+           if (num_threads<2) picmd.append(" -p1");
+                else {
+                  picmd.append(" -p");
+                  str_appendInt(picmd, num_threads);
+                  //picmd.append(" -cd");
+                  }
+           }
+        else picmd="gzip";
+      }
+     else if (fext=="bz2" || fext=="bzip2" || fext=="bz" || fext=="bzip") {
+      if (use_all_cpus && str_endsWith(zpacker,"pbzip2")) {
+            picmd=zpacker;
+            if (num_threads<2) picmd.append(" -p1");
+                 else {
+                   picmd.append(" -p");
+                   str_appendInt(picmd, num_threads);
+                   //picmd.append(" -cd");
+                   }
+            }
+         else picmd="bzip2";
+      }
+  return picmd;
+}
+
 string getUnpackCmd(const string& fname, bool use_all_cpus) {
  //prep_reads should use guess_packer() instead
   //otherwise compressed files MUST have the .z extension,
   //as they are all internally generated
  string pipecmd("");
  string fext=getFext(fname);
- if (fext=="bam") {
-    pipecmd="bam2fastx";
-    return pipecmd;
-    }
- if (zpacker.empty() || fext!="z") { 
+ //if (fext=="bam") {
+ //   pipecmd="bam2fastx --all";
+ //   return pipecmd;
+ //   }
+ if (zpacker.empty() || fext!="z") {
       return pipecmd; //no packer used
       }
  pipecmd=zpacker;
  if (str_endsWith(pipecmd, "pigz") ||str_endsWith(pipecmd, "pbzip2")) {
           if (use_all_cpus==false) pipecmd.append(" -p1");
-              else if (num_cpus>1) {
+              else if (num_threads>1) {
                     pipecmd.append(" -p");
-                    str_appendInt(pipecmd,num_cpus);
+                    str_appendInt(pipecmd,num_threads);
                     }
           }
  if (!pipecmd.empty()) pipecmd.append(" -cd");
@@ -746,32 +958,35 @@ uint8_t* dupalloc_bdata(bam1_t *b, int size) {
 extern unsigned short bam_char2flag_table[];
 
 GBamRecord::GBamRecord(const char* qname, int32_t gseq_tid,
-                 int pos, bool reverse, const char* qseq, const char* cigar, const char* quals) {
+		       int pos, bool reverse, const char* qseq, const char* cigar, const char* quals) {
    novel=true;
    b=bam_init1();
-   b->core.tid=gseq_tid;
-   if (pos<=0) {
+   if (pos<=0 || gseq_tid<0) {
                b->core.pos=-1; //unmapped
-               //if (gseq_tid<0)
                b->core.flag |= BAM_FUNMAP;
+               gseq_tid=-1;
                }
           else b->core.pos=pos-1; //BAM is 0-based
+   b->core.tid=gseq_tid;
+   b->core.mtid=-1;
+   b->core.mpos=-1;
    b->core.qual=255;
    int l_qseq=strlen(qseq);
    //this may not be accurate, setting CIGAR is the correct way
    //b->core.bin = bam_reg2bin(b->core.pos, b->core.pos+l_qseq-1);
    b->core.l_qname=strlen(qname)+1; //includes the \0 at the end
    memcpy(realloc_bdata(b, b->core.l_qname), qname, b->core.l_qname);
+   
    set_cigar(cigar); //this will also set core.bin
    add_sequence(qseq, l_qseq);
    add_quals(quals); //quals must be given as Phred33
-   if (reverse) { b->core.flag |= BAM_FREVERSE ; }
+   if (reverse) { b->core.flag |= BAM_FREVERSE; }
    }
 
 GBamRecord::GBamRecord(const char* qname, int32_t flags, int32_t g_tid,
-             int pos, int map_qual, const char* cigar, int32_t mg_tid, int mate_pos,
-             int insert_size, const char* qseq, const char* quals,
-             const vector<string>* aux_strings) {
+		       int pos, int map_qual, const char* cigar, int32_t mg_tid, int mate_pos,
+		       int insert_size, const char* qseq, const char* quals,
+		       const vector<string>* aux_strings) {
   novel=true;
   b=bam_init1();
   b->core.tid=g_tid;
@@ -780,6 +995,7 @@ GBamRecord::GBamRecord(const char* qname, int32_t flags, int32_t g_tid,
   int l_qseq=strlen(qseq);
   b->core.l_qname=strlen(qname)+1; //includes the \0 at the end
   memcpy(realloc_bdata(b, b->core.l_qname), qname, b->core.l_qname);
+   
   set_cigar(cigar); //this will also set core.bin
   add_sequence(qseq, l_qseq);
   add_quals(quals); //quals must be given as Phred33
@@ -809,7 +1025,7 @@ GBamRecord::GBamRecord(const char* qname, int32_t flags, int32_t g_tid,
    int i, op;
    long x;
    b->core.n_cigar = 0;
-   if (cigar != NULL && strcmp(cigar, "*") != 0) {
+   if (cigar && strcmp(cigar, "*")) {
         for (s = cigar; *s; ++s) {
             if (isalpha(*s)) b->core.n_cigar++;
             else if (!isdigit(*s)) {
@@ -824,7 +1040,7 @@ GBamRecord::GBamRecord(const char* qname, int32_t flags, int32_t g_tid,
            else {
              realloc_bdata(b, doff + b->core.n_cigar * 4);
              }
-        for (i = 0, s = cigar; i != b->core.n_cigar; ++i) {
+        for (i = 0, s = cigar; i != (int)b->core.n_cigar; ++i) {
             x = strtol(s, &t, 10);
             op = toupper(*t);
             if (op == 'M' || op == '=' || op == 'X') op = BAM_CMATCH;
@@ -838,7 +1054,7 @@ GBamRecord::GBamRecord(const char* qname, int32_t flags, int32_t g_tid,
             s = t + 1;
             bam1_cigar(b)[i] = x << BAM_CIGAR_SHIFT | op;
         }
-        if (*s) err_die("Error: unmatched CIGAR operation (%s)\n",cigar);
+        if (*s) err_die("Error: unmatched CIGAR operation (%s)\n", cigar);
         b->core.bin = bam_reg2bin(b->core.pos, bam_calend(&b->core, bam1_cigar(b)));
     } else {//no CIGAR string given
         if (!(b->core.flag&BAM_FUNMAP)) {
@@ -880,8 +1096,8 @@ GBamRecord::GBamRecord(const char* qname, int32_t flags, int32_t g_tid,
 
  void GBamRecord::add_aux(const char* str) {
      //requires: being called AFTER add_quals()
-     static char tag[2];
-     static uint8_t abuf[512];
+     // static char tag[2];
+     // static uint8_t abuf[512];
      //requires: being called AFTER add_quals()
      int strl=strlen(str);
      //int doff = b->core.l_qname + b->core.n_cigar*4 + (b->core.l_qseq+1)/2 + b->core.l_qseq + b->l_aux;
@@ -915,7 +1131,7 @@ GBamRecord::GBamRecord(const char* qname, int32_t flags, int32_t g_tid,
                  *(int32_t*)abuf = (int32_t)x;
                  alen=4;
                  if (x < -2147483648ll)
-                     fprintf(stderr, "Parse warning: integer %lld is out of range.",
+                     fprintf(stderr, "Parse warning: integer %lld is out of range.\n",
                              x);
                  }
              } else { //x >=0
@@ -934,7 +1150,7 @@ GBamRecord::GBamRecord(const char* qname, int32_t flags, int32_t g_tid,
                  *(uint32_t*)abuf = (uint32_t)x;
                  alen=4;
                  if (x > 4294967295ll)
-                     fprintf(stderr, "Parse warning: integer %lld is out of range.",
+                     fprintf(stderr, "Parse warning: integer %lld is out of range.\n",
                              x);
                  }
              }
@@ -958,7 +1174,151 @@ GBamRecord::GBamRecord(const char* qname, int32_t flags, int32_t g_tid,
                  }
              memcpy(abuf, str + 5, strl - 5);
              abuf[strl-5] = 0;
-             alen=strl-4;
+             alen=strl-4; //making sure the len includes the terminal \0
              } else parse_error("unrecognized aux type");
   this->add_aux(tag, atype, alen, adata);
   }//add_aux()
+
+
+ uint8_t* GBamRecord::find_tag(const char tag[2]) {
+   return bam_aux_get(this->b, tag);
+ }
+
+ char GBamRecord::tag_char(const char tag[2]) { //retrieve tag data as single char
+   uint8_t* s=find_tag(tag);
+   if (s) return ( bam_aux2A(s) );
+   return 0;
+  }
+
+ int GBamRecord::tag_int(const char tag[2]) { //get the numeric value of tag
+   uint8_t *s=find_tag(tag);
+   if (s) return ( bam_aux2i(s) );
+   return 0;
+   }
+
+ string GBamRecord::tag_str(const char tag[2]) { //return string value for a tag
+   string r("");
+   uint8_t *sz=find_tag(tag);
+   if (sz) {
+	 r = bam_aux2Z(sz);
+   }
+   return r;
+   }
+
+ char GBamRecord::spliceStrand() { // '+', '-' from the XS tag, or 0 if no XS tag
+   char c=tag_char("XS");
+   if (c) return c;
+     else return '.';
+   }
+
+ string GBamRecord::sequence() {
+   char *s = (char*)bam1_seq(b);
+   string qseq;
+   qseq.resize(b->core.l_qseq);
+   for (int i=0;i<(b->core.l_qseq);i++) {
+     int8_t v = bam1_seqi(s,i);
+     qseq[i] = bam_nt16_rev_table[v];
+     }
+   return qseq;
+   }
+
+ string GBamRecord::qualities() {
+   char *qual  = (char*)bam1_qual(b);
+   string qv;
+   qv.resize(b->core.l_qseq);
+   for(int i=0;i<(b->core.l_qseq);++i) {
+     qv[i]=qual[i]+33;
+     }
+   return qv;
+   }
+
+ string GBamRecord::seqData(string* readquals) {
+   static const int8_t seq_comp_table[16] = { 0, 8, 4, 12, 2, 10, 9, 14, 1, 6, 5, 13, 3, 11, 7, 15 };
+   string seq;
+   string squal;
+   unsigned char *qual  = (unsigned char*)bam1_qual(b);
+   unsigned char *s    = (unsigned char*)bam1_seq(b);
+   int i;
+   //bool ismapped=((b->core.flag & BAM_FUNMAP) == 0);
+   bool isreversed=((b->core.flag & BAM_FREVERSE) != 0);
+   bool is_paired = ((b->core.flag & BAM_FPAIRED) != 0);
+   int mate_num=0;
+   if (is_paired) {
+      if (b->core.flag & BAM_FREAD1)
+          mate_num=1;
+      else if (b->core.flag & BAM_FREAD2)
+          mate_num=2;
+      }
+   int seqlen = b->core.l_qseq;
+   if (seqlen>0) {
+ 	seq.resize(seqlen);
+ 	for(i=0;i<seqlen;i++) {
+ 	  seq[i] = bam1_seqi(s,i);
+ 	}
+ 	// copied from sam_view.c in samtools.
+ 	if (isreversed) {
+ 	   int l=0;
+ 	   int r=seqlen-1;
+ 	   while (l<r) {
+ 		  char c=seq[l];
+ 		  seq[l]=seq[r];
+ 		  seq[r]=c;
+ 		  l++;r--;
+ 		  }
+	   for (i=0;i<seqlen;i++) {
+	     seq[i]=seq_comp_table[(int)seq[i]];
+	   }
+ 	}
+
+   if (color)
+     {
+       const static char *color_bam_nt16_rev_table = "4014244434444444";
+       seq[0] = bam_nt16_rev_table[(int)seq[0]];
+       for(i=1;i<seqlen;i++)
+	 {
+	   seq[i] = color_bam_nt16_rev_table[(int)seq[i]];
+	 }
+     }
+   else
+     {
+       for(i=0;i<seqlen;i++) {
+ 	  seq[i] = bam_nt16_rev_table[(int)seq[i]];
+ 	}
+     }
+   
+  if (readquals) {
+    if (color)
+      {
+	squal.resize(seqlen - 1);
+	for(i=1;i<seqlen;i++) {
+	  if (qual[i]==0xFF)
+	    squal[i-1]='I';
+	  else squal[i-1]=qual[i]+33;
+	}
+      }
+    else
+      {
+  	squal.resize(seqlen);
+	for(i=0;i<seqlen;i++) {
+	  if (qual[i]==0xFF)
+	    squal[i]='I';
+	  else squal[i]=qual[i]+33;
+	}
+      }
+
+ 	  if (isreversed) {
+ 	    int l=0;
+ 	    int r=seqlen-1;
+ 	    while (l<r) {
+ 		   int8_t t = squal[l];
+ 		   squal[l] = squal[r];
+ 		   squal[r] = t;
+ 		   l++;r--;
+ 	    }
+ 	  }
+ 	 *readquals = squal;
+   }
+  }//seqlen>0
+ return seq;
+ }
+

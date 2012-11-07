@@ -40,7 +40,6 @@ void read_transcripts(FILE* f, GffReader& gffr) {
   //now all parsed GffObjs are in gffr.gflst, grouped by genomic sequence
   }
 
-
 uint32_t get_junctions_from_gff(FILE* ref_mRNA_file,
                                 RefSequenceTable& rt)
 {
@@ -82,10 +81,11 @@ uint32_t get_junctions_from_gff(FILE* ref_mRNA_file,
 		for (int e = 1; e < rna.exons.Count(); ++e) {
 		    GffExon& ex = *(rna.exons[e]);
 		    GffExon& prex = *(rna.exons[e-1]);
-		    fprintf(stdout, "%s\t%d\t%d\t%c\n",
-		                 gseqname,
-		                 prex.end-1, ex.start-1, rna.strand);
-		    uniq_juncs.insert(make_pair(gseqname, make_pair(prex.end - 1, ex.start - 1)));
+		    if(uniq_juncs.insert(make_pair(gseqname, make_pair(prex.end - 1, ex.start - 1))).second) {
+		      fprintf(stdout, "%s\t%d\t%d\t%c\n",
+			      gseqname,
+			      prex.end-1, ex.start-1, rna.strand);
+		    }		      
 		    }
 		} //for each loaded GFF record
 	return uniq_juncs.size();

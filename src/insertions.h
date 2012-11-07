@@ -10,10 +10,7 @@
 #include <cstdio>
 #include <vector>
 #include <string>
-//#include <map>
-//#include <algorithm>
 #include <set>
-//#include <stdexcept>
 #include <iostream>
 #include <fstream>
 #include <cstring>
@@ -25,9 +22,6 @@
 
 using namespace std;
 
- 
-
-
 
 /**
  * Data structure to represent an insertion.
@@ -36,50 +30,70 @@ using namespace std;
  */
 struct Insertion 
 {
-	
-	Insertion (uint32_t ref, uint32_t l, const std::string& seq)
-	: refid(ref), left(l), sequence(seq){}
-	Insertion() : refid(0), left(0), sequence("") {}
-	/**
-	 * The ID of the assoicated reference sequence (eg, chr22). In order to actually turn this into
-	 * a string, need to use the map associated with the reference table
-	 */
-	uint32_t refid;
-	/**
- 	 * The position of the insertion.
-         * This is the 0-based position of the last genomic nucleotide before the insertion
-	 */
-	uint32_t left;
-
-	/**
-	 * The actual inserted sequence.
-	 */
-	std::string sequence;
-
-	bool operator<(const Insertion& rhs) const
-	{
-		if (refid < rhs.refid)
-			return true;
-		else if (refid > rhs.refid)
-			return false;
-		
-		if (left < rhs.left)
-			return true;
-		else if (left > rhs.left)
-			return false;
-		
-		if (sequence.length() < rhs.sequence.length())
-			return true;
-		return false;
-	}
-
-	
-	bool operator==(const Insertion& rhs) const
-	{
-		return  (refid == rhs.refid && left == rhs.left && sequence == rhs.sequence);
-	}
-	
+  Insertion (uint32_t ref, uint32_t l, const std::string& seq)
+  : refid(ref), left(l), sequence(seq){}
+Insertion() : refid(0), left(0), sequence("") {}
+  /**
+   * The ID of the assoicated reference sequence (eg, chr22). In order to actually turn this into
+   * a string, need to use the map associated with the reference table
+   */
+  uint32_t refid;
+  /**
+   * The position of the insertion.
+   * This is the 0-based position of the last genomic nucleotide before the insertion
+   */
+  uint32_t left;
+  
+  /**
+   * The actual inserted sequence.
+   */
+  std::string sequence;
+  
+  bool operator<(const Insertion& rhs) const
+  {
+    if (refid < rhs.refid)
+      return true;
+    else if (refid > rhs.refid)
+      return false;
+    
+    if (left < rhs.left)
+      return true;
+    else if (left > rhs.left)
+      return false;
+    
+    if (sequence.length() < rhs.sequence.length())
+      return true;
+    return false;
+  }
+  
+  
+  bool operator==(const Insertion& rhs) const
+  {
+    return  (refid == rhs.refid && left == rhs.left && sequence == rhs.sequence);
+  }
 };
+
+struct InsertionStats
+{
+InsertionStats() : left_extent(0), right_extent(0), supporting_hits(0) {}
+
+  InsertionStats& merge_with(const InsertionStats& other)
+  {
+    if (this == &other)
+      return *this;
+
+    left_extent = max(left_extent, other.left_extent);
+    right_extent = max(right_extent, other.right_extent);
+    supporting_hits += other.supporting_hits;
+
+    return *this;
+  }
+  
+  int left_extent;
+  int right_extent;
+  int supporting_hits;
+};
+
 
 /**
  * A function used to compare Insertions, specifically for use
@@ -89,18 +103,17 @@ struct Insertion
  */ 
 struct insertion_comparison 
 {
-	bool operator()(const Insertion& lhs, const Insertion& rhs)
-	{
-		return lhs < rhs;
-	}
+  bool operator()(const Insertion& lhs, const Insertion& rhs)
+  {
+    return lhs < rhs;
+  }
 };
 
-typedef std::map<Insertion, uint32_t> InsertionSet;
-
+typedef std::map<Insertion, InsertionStats> InsertionSet;
 
 void insertions_from_alignment(const BowtieHit& bh, InsertionSet& insertions);
 void print_insertions(FILE* insertions_out, const InsertionSet& insertions, RefSequenceTable& ref_sequences);
-void insertions_from_spliced_hit(const BowtieHit& bh, vector<Insertion>& insertions);
-
+void insertions_from_spliced_hit(const BowtieHit& bh, vector<pair<Insertion, InsertionStats> >& insertions);
+void merge_with(InsertionSet& insertions, const InsertionSet& other);
 
 #endif
