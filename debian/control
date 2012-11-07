@@ -1,7 +1,7 @@
 Source: tophat2.0.6
 Section: science
 Priority: optional
-Build-Depends: debhelper (>= 7), autoconf, libbam-dev, zlib1g-dev
+Build-Depends: debhelper (>= 7), autoconf, libbam-dev, zlib1g-dev, libboost-all-dev
 Maintainer: Matthew Callaway <mcallawa@genome.wustl.edu>
 Homepage: http://tophat.cbcb.umd.edu/
 
