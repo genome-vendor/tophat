@@ -19,7 +19,7 @@
 EXECUTABLES="library_stats contig_to_chr_coords long_spanning_reads segment_juncs gtf_juncs juncs_db bed_to_juncs closure_juncs bam_merge wiggles prep_reads tophat mask_sam tophat_reports extract_reads fix_map_ordering sam_juncs bam2fastx sra_to_solid"
 MANPAGES=""
 PRIORITY=1
-EXE_VERSION_SUFFIX=1.4.0
+EXE_VERSION_SUFFIX=2.0.6
 
 set -e
 

@@ -1,3 +1,9 @@
+tophat2.0.6 (2.0.6) lucid; urgency=low
+
+  * Latest upstream
+
+ -- The Genome Institute <gmt@genome.wustl.edu>  Wed, 07 Nov 2012 11:25:03 -0500
+
 tophat1.4.0 (1.4.0-2) lucid; urgency=low
 
   * cleaned up rules and fixed /usr/bin/*
