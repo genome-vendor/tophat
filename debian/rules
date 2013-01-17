@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 PRG=tophat
-VER=2.0.6
+VER=2.0.7-1
 BIN_LIST=$$(find $(DEB_DIR)$(PKG_LIB_DIR)/bin -executable -type f)
 PKG=$(PRG)$(VER)
 DEB_DIR=debian/$(PKG)
