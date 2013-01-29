@@ -1,8 +1,8 @@
-tophat2.0.7-1 (2.0.7-1) lucid; urgency=low
+tophat2.0.7 (2.0.7) lucid; urgency=low
 
-  * Early version of latest upstream
+  * Latest upstream
 
- -- The Genome Institute <gmt@genome.wustl.edu>  Wed, 09 Jan 2013 13:06:44 -0600
+ -- The Genome Institute <gmt@genome.wustl.edu>  Tue, 29 Jan 2013 12:30:44 -0600
 
 tophat2.0.6 (2.0.6) lucid; urgency=low
 
