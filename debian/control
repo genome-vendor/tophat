@@ -1,11 +1,11 @@
-Source: tophat2.0.7
+Source: tophat2.0.8
 Section: science
 Priority: optional
 Build-Depends: debhelper (>= 7), autoconf, libbam-dev, zlib1g-dev, libboost-all-dev
 Maintainer: Matthew Callaway <mcallawa@genome.wustl.edu>
 Homepage: http://tophat.cbcb.umd.edu/
 
-Package: tophat2.0.7
+Package: tophat2.0.8
 Architecture: amd64
 Depends: zlib1g
 Description: TopHat is a program that aligns RNA-Seq reads to a genome in order to identify exon-exon splice junctions.

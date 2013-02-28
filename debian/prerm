@@ -2,7 +2,7 @@
 set -e
 
 PKG="tophat"
-VER="2.0.7"
+VER="2.0.8"
 PKG_DIR=/usr/lib/${PKG}${VER}
 
 if [ \( "$1" = "upgrade" -o "$1" = "remove" \) -a -L /usr/bin/tophat ]; then
