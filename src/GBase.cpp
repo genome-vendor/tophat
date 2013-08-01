@@ -3,14 +3,6 @@
 #include <ctype.h>
 #include <sys/stat.h>
 
-#ifndef S_ISDIR
-#define S_ISDIR(mode)  (((mode) & S_IFMT) == S_IFDIR)
-#endif
-
-#ifndef S_ISREG
-#define S_ISREG(mode)  (((mode) & S_IFMT) == S_IFREG)
-#endif
-
 static char msg[4069];
 /*
 #ifdef _DEFINE_WIN32_FSEEKO
@@ -497,10 +489,11 @@ char* reverseChars(char* str, int slen) {
   if (slen==0) slen=strlen(str);
   int l=0;
   int r=slen-1;
-  char c;
+  register char c;
   while (l<r) {
      c=str[l];str[l]=str[r];
      str[r]=c;
+     //swap(str[l],str[r]);
      l++;r--;
      }
   return str;

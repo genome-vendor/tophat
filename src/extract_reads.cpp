@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
 {
 	FILE *fp;
 	int c;
-	unsigned int chunk_size = VMAXINT32;
+	unsigned int chunk_size = 0xFFFFFFFF;
 	// Parse command line options
 	while ((c = getopt(argc, argv, "hqfr:va")) >= 0) {
 		switch (c) {

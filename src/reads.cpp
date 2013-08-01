@@ -120,8 +120,7 @@ bool next_fastq_record(FLineReader& fr,
     if (fline==NULL) return false;
     }
   //must be on '+' line here
-  if (fline==NULL || (reads_format == FASTQ && fline[0] != '+') ||
-      (reads_format == FASTA && quals && fline[0] != '>')) {
+  if (fline==NULL || (reads_format == FASTQ && fline[0] != '+') || (reads_format == FASTA && quals && fline[0] != '>')) {
      err_exit("Error: '+' not found for fastq record %s\n",fline);
      return false;
      }
@@ -132,54 +131,37 @@ bool next_fastq_record(FLineReader& fr,
   while ((fline=fr.nextLine())!=NULL) {
     if (integer_quals)
       {
-      vector<string> integer_qual_values;
-      tokenize(string(fline), " ", integer_qual_values);
+	vector<string> integer_qual_values;
+	tokenize(string(fline), " ", integer_qual_values);
 
-      string temp_qual;
-      for (size_t i = 0; i < integer_qual_values.size(); ++i)
-        {
-          int qual_value = atoi(integer_qual_values[i].c_str());
-          if (qual_value < 0) qual_value = 0;
-          temp_qual.push_back((char)(qual_value + 33));
-        }
+	string temp_qual;
+	for (size_t i = 0; i < integer_qual_values.size(); ++i)
+	  {
+	    int qual_value = atoi(integer_qual_values[i].c_str());
+	    if (qual_value < 0) qual_value = 0;
+	    temp_qual.push_back((char)(qual_value + 33));
+	  }
 
-      qual.append(temp_qual);
+	qual.append(temp_qual);
       }
     else
       qual.append(fline);
-      if (qual.length()>=seq.length()-1) break;
+    
+    if ((!color && qual.length()>=seq.length()) || (color && qual.length()+1>=seq.length())) break;
      }
   // final check
-  if (color) {
-     if (seq.length()==qual.length()) {
-        //discard first qv
-        qual=qual.substr(1);
-        }
-     if (seq.length()!=qual.length()+1) {
-        err_exit("Error: length of quality string does not match seq length (%d) for color read %s!\n",
-           seq.length(), alt_name.c_str());
-        }
-     }
-  else {
-    if (seq.length()!=qual.length()) {
-           err_exit("Error: qual string length (%d) differs from seq length (%d) for read %s!\n",
+  if ((!color && seq.length()!=qual.length()) || (color && seq.length()!=qual.length()+1)) {
+           err_exit("Error: qual length (%d) differs from seq length (%d) for fastq record %s!\n",
                qual.length(), seq.length(), alt_name.c_str());
-           //return false;
+           return false;
            }
-    }
   //
+
   return !(qual.empty());
 }
 
 bool next_fastx_read(FLineReader& fr, Read& read, ReadFormat reads_format, 
                         FLineReader* frq) {
-  if (fr.pushed_read)
-    {
-      read = fr.last_read;
-      fr.pushed_read = false;
-      return true;
-    }
-  
   read.clear();
   char* buf=NULL;
   while ((buf=fr.nextLine())!=NULL) {
@@ -237,33 +219,23 @@ bool next_fastx_read(FLineReader& fr, Read& read, ReadFormat reads_format,
         read.qual.append(temp_qual);
       }
     else {
-        read.qual.append(buf);
+      // if (color && read.qual.length()==0 && buf[0]=='!')
+      //   read.qual.append(&(buf[1])); //some color qual strings start with '!' for the adaptor
+      //  else
+         read.qual.append(buf);
       }
-    if (read.qual.length()>=read.seq.length()-1)
-          break;
+    if ((!color && read.qual.length()>=read.seq.length())
+          || (color && read.qual.length()+1>=read.seq.length())) break;
     } //while qv lines
   
   // final check
-  if (color) {
-     if (read.seq.length()==read.qual.length()) {
-        //discard first qv
-        read.qual=read.qual.substr(1);
-        }
-     if (read.seq.length()!=read.qual.length()+1) {
-        err_exit("Error: length of quality string does not match sequence length (%d) for color read %s!\n",
-            read.seq.length(), read.alt_name.c_str());
-        }
-     }
-  else {
-   if (read.seq.length()!=read.qual.length()) {
+  if ((!color && read.seq.length()!=read.qual.length()) || (color && read.seq.length()!=read.qual.length()+1)) {
            err_exit("Error: qual length (%d) differs from seq length (%d) for fastq record %s!\n",
                read.qual.length(), read.seq.length(), read.alt_name.c_str());
            return false;
            }
-    }
-
-  fr.last_read = read;  
-  return !(read.seq.empty());
+  //
+  return !(read.qual.empty());
 }
 
 // This could be faster.
@@ -593,105 +565,43 @@ void BWA_decode(const string& color, const string& qual, const string& ref, stri
     }
 }
 
-
-bool ReadStream::next_read(Read& r, ReadFormat read_format) {
-  FLineReader fr(fstream.file);
-  while (read_pq.size()<100000 && !r_eof) {
-    //keep the queue topped off
-    Read rf;
-    if (!next_fastx_read(fr, rf, read_format)) {
-        r_eof=true;
-        break;
-        }
-    //Read read=Read(rf);
-    uint64_t id = (uint64_t)atol(rf.name.c_str());
-    read_pq.push(make_pair(id, rf));
-    }
-  if (read_pq.size()==0)
-     return false;
-  const pair<uint64_t, Read>& t = read_pq.top();
-  r=t.second; //copy strings
-  //free(t.second);
-  read_pq.pop();
-  return true;
-}
-
-// reads must ALWAYS requested in increasing order of their ID
-bool ReadStream::getRead(uint64_t r_id,
-            Read& read,
-            ReadFormat read_format,
-            bool strip_slash,
-            FILE* um_out, //unmapped reads output
-            bool um_write_found) {
-  if (!fstream.file)
-       err_die("Error: calling ReadStream::getRead() with no file handle!");
-  if (r_id<last_id)
-      err_die("Error: ReadStream::getRead() called with out-of-order id#!");
-  last_id=r_id;
-  bool found=false;
-  while (!found) {
-    read.clear();
-      // Get the next read from the file
-    if (!next_read(read, read_format))
-        break;
-    if (strip_slash) {
-       string::size_type slash = read.name.rfind("/");
-       if (slash != string::npos)
-          read.name.resize(slash);
-       }
-    if ((uint64_t)atoi(read.name.c_str()) == r_id) {
-       found=true;
-       }
-    if (um_out && (um_write_found || !found)) {
-     //write unmapped reads
-      fprintf(um_out, "@%s\n%s\n+\n%s\n", read.alt_name.c_str(),
-                              read.seq.c_str(), read.qual.c_str());
-      }
-    //rt.get_id(read.name, ref_str);
-    } //while reads
-  return found;
-}
-
-
 bool get_read_from_stream(uint64_t insert_id,
-			  FLineReader& fr,
+			  FILE* reads_file,
 			  ReadFormat reads_format,
 			  bool strip_slash,
-			  Read& read,
-			  FILE* um_out,
-			  bool um_write_found)
+			  char read_name [], 
+			  char read_seq  [],
+			  char read_alt_name [], 
+			  char read_qual [])
 {
-  bool found=false;
-  while(!found && !fr.isEof())
-    {
-    read.clear();
+  Read read;
+  FLineReader fr(reads_file);
+  while(!fr.isEof())
+	{
+	read.clear();
+	  
+	  // Get the next read from the file
+	if (!next_fastx_read(fr, read, reads_format))
+	    break;
 
-      // Get the next read from the file
-    if (!next_fastx_read(fr, read, reads_format))
-        break;
-    if (strip_slash)
-      {
-        string::size_type slash = read.name.rfind("/");
-        if (slash != string::npos)
-          read.name.resize(slash);
-      }
-    uint64_t read_id = (uint64_t)atoi(read.name.c_str());
-    if (read_id == insert_id)
-      {
-	found=true;
-      }
-    else if (read_id > insert_id)
-      {
-	fr.pushBack_read();
-	break;
-      }
-
-    if (um_out && (um_write_found || !found)) {
-     //write unmapped reads
-      fprintf(um_out, "@%s\n%s\n+\n%s\n", read.alt_name.c_str(),
-                              read.seq.c_str(), read.qual.c_str());
-      }
-    //rt.get_id(read.name, ref_str);
-    } //while reads
-  return found;
+	if (strip_slash)
+	{
+	  string::size_type slash = read.name.rfind("/");
+	  if (slash != string::npos)
+	    read.name.resize(slash);
+	}
+      
+	if ((uint64_t)atoi(read.name.c_str()) == insert_id)
+	{
+	  if (read_name) strcpy(read_name, read.name.c_str());
+	  if (read_seq) strcpy(read_seq, read.seq.c_str());
+	  if (read_alt_name) strcpy(read_alt_name, read.alt_name.c_str());
+	  if (read_qual) strcpy(read_qual, read.qual.c_str());
+	  return true;
+	}
+		
+      //rt.get_id(read.name, ref_str);
+    }	
+  
+  return false;
 }

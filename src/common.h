@@ -19,8 +19,6 @@
 #include "bam/sam.h"
 
 
-#define VMAXINT32 0xFFFFFFFF
-
 #ifdef MEM_DEBUG
  void process_mem_usage(double& vm_usage, double& resident_set);
  void print_mem_usage();
@@ -62,7 +60,6 @@ extern int island_extension;
 extern int num_cpus;
 extern int segment_length; // the read segment length used by the pipeline
 extern int segment_mismatches;
-extern int max_read_mismatches;
 
 extern int max_splice_mismatches;
 
@@ -70,7 +67,7 @@ enum ReadFormat {FASTA, FASTQ};
 extern ReadFormat reads_format;
 
 extern bool verbose;
-extern unsigned int max_multihits;
+extern int max_multihits;
 extern bool no_closure_search;
 extern bool no_coverage_search;
 extern bool no_microexon_search;
@@ -94,18 +91,8 @@ extern bool quals;
 extern bool integer_quals;
 extern bool color;
 extern bool color_out;
+
 extern std::string gtf_juncs;
-
-//prep_reads only: --flt-reads <bowtie-fastq_for--max>
-//  filter out reads if their numeric ID is in this fastq file
-// OR if flt_mappings was given too, filter out reads if their ID
-// is NOT in this fastq file
-extern std::string flt_reads;
-
-//prep_reads special usage: filter out mappings whose read ID
-//is NOT found in the flt_reads file, and write them into
-// aux_outfile; also reverses the flt_reads filter itself
-extern std::string flt_mappings;
 
 enum eLIBRARY_TYPE
   {
@@ -140,61 +127,37 @@ std::string getUnpackCmd(const std::string& fname, bool use_all_cpus=false);
 void checkSamHeader();
 void writeSamHeader(FILE* fout);
 
-class FZPipe {
- public:
-	 FILE* file;
-	 std::string filename;
-	 std::string pipecmd;
-	 bool is_bam;
-	 FZPipe(std::string& fname, bool is_mapping):filename(fname),pipecmd() {
-	   //this constructor is only to use FZPipe as a READER
-       //also accepts/recognizes BAM files
-	   //for which it only stores the filename, other fields/methods are unused
-	   openRead(fname, is_mapping);
-	   }
-
-   void openRead(std::string& fname, bool is_mapping) {
-     filename=fname;
-     pipecmd="";
-     is_bam=false;
-     if (is_mapping && getFext(fname) == "bam") {
-           file=(FILE*)this;
-           is_bam=true;
-           return;
-           }
-     pipecmd=getUnpackCmd(fname); //also bam2fastx
-     this->openRead(fname.c_str(), pipecmd);
+struct FZPipe {
+ FILE* file;
+ std::string filename;
+ std::string pipecmd;
+ FZPipe():filename(),pipecmd() {
+   file=NULL;
+   }
+ FZPipe(std::string& fname, std::string& pcmd):filename(fname),pipecmd(pcmd) {
+   //open as a compressed file reader
+   file=NULL;
+   this->openRead(fname.c_str(), pipecmd);
+   }
+ void close() {
+   if (file!=NULL) {
+     if (pipecmd.empty()) fclose(file);
+                     else pclose(file);
+     file=NULL;
      }
+   }
+ FILE* openWrite(const char* fname, std::string& popencmd);
+ FILE* openWrite(const char* fname);
+ FILE* openRead(const char* fname, std::string& popencmd);
 
-	 FZPipe():filename(),pipecmd() {
-	   is_bam=false;
-	   file=NULL;
-	   }
-	 FZPipe(std::string& fname, std::string& pcmd):filename(fname),pipecmd(pcmd) {
-	   //open as a compressed file reader
-	   is_bam=false;
-	   file=NULL;
-	   this->openRead(fname.c_str(), pipecmd);
-	   }
-	 void close() {
-	   if (file!=NULL) {
-		 if (pipecmd.empty()) fclose(file);
-						 else pclose(file);
-		 file=NULL;
-		 }
-	   }
-	 FILE* openWrite(const char* fname, std::string& popencmd);
-	 FILE* openWrite(const char* fname);
-	 FILE* openRead(const char* fname, std::string& popencmd);
-
-	 FILE* openRead(const char* fname);
-	 FILE* openRead(const std::string fname, std::string& popencmd) {
-	   return this->openRead(fname.c_str(),popencmd);
-	   }
-	 FILE* openRead(const std::string fname) {
-	   return this->openRead(fname.c_str());
-	   }
-	 void rewind();
+ FILE* openRead(const char* fname);
+ FILE* openRead(const std::string fname, std::string& popencmd) {
+   return this->openRead(fname.c_str(),popencmd);
+   }
+ FILE* openRead(const std::string fname) {
+   return this->openRead(fname.c_str());
+   }
+ void rewind();
 };
 
 void err_die(const char* format,...);
@@ -297,13 +260,10 @@ class GBamWriter {
          err_die("Error: could not create BAM file %s!\n",fname);
       //do we need to call bam_header_write() ?
       }
-   void create(const char* fname, bam_header_t* bh, bool uncompressed=false) {
-	 bam_header=bh;
-	 create(fname,uncompressed);
-     }
 
    GBamWriter(const char* fname, bam_header_t* bh, bool uncompressed=false) {
-      create(fname, bh, uncompressed);
+      bam_header=bh;
+      create(fname, uncompressed);
       }
 
    GBamWriter(const char* fname, const char* samfname, bool uncompressed=false) {
@@ -376,9 +336,6 @@ class GBamWriter {
    void write(GBamRecord* brec) {
       if (brec!=NULL)
           samwrite(this->bam_file,brec->get_b());
-      }
-   void write(bam1_t* b) {
-      samwrite(this->bam_file, b);
       }
 };
 

@@ -608,12 +608,9 @@ public:
      if (sid==gff_fid_exon && isCDS) sid=gff_fid_CDS;
      return names->feats.getName(sid);
      }
-   void addCDS(uint cd_start, uint cd_end, char phase=0);
-   
    bool monoFeature() {
      return (exons.Count()==0 || 
-          (exons.Count()==1 &&  //exon_ftype_id==ftype_id && 
-              exons[0]->end==this->end && exons[0]->start==this->start));
+          (exons.Count()==1 && exon_ftype_id==ftype_id));
      }
 
    bool hasCDS() { return (CDstart>0); }
@@ -674,7 +671,7 @@ public:
      }
    bool exonOverlap(uint s, uint e) {//check if ANY exon overlaps given segment
       //ignores strand!
-      if (s>e) Gswap(s,e);
+      if (s>e) swap(s,e);
       for (int i=0;i<exons.Count();i++) {
          if (exons[i]->overlap(s,e)) return true;
          }
@@ -697,7 +694,7 @@ public:
     int exonOverlapIdx(uint s, uint e, int* ovlen=NULL) {
       //return the exons' index for the overlapping OR ADJACENT exon
       //ovlen, if given, will return the overlap length
-      if (s>e) Gswap(s,e);
+      if (s>e) swap(s,e);
       s--;e++; //to also catch adjacent exons
       for (int i=0;i<exons.Count();i++) {
             if (exons[i]->start>e) break;

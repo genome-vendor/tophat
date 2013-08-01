@@ -27,11 +27,7 @@ bool InsertAlignmentGrade::operator<(const InsertAlignmentGrade& rhs)
 	}
 	else if (num_mapped == 2)
 	{
-    // Prefer lower edit distance
-	  if (edit_dist != rhs.edit_dist)
-      return rhs.edit_dist < edit_dist;
-
-	  // Prefer contiguous alignments over spliced ones
+		// Prefer contiguous alignments over spliced ones
 		if (num_spliced != rhs.num_spliced)
 			return rhs.num_spliced < num_spliced;
 		
@@ -50,7 +46,10 @@ bool InsertAlignmentGrade::operator<(const InsertAlignmentGrade& rhs)
 		// Prefer shorter introns
 		if (longest_ref_skip != rhs.longest_ref_skip)
 			return rhs.longest_ref_skip < longest_ref_skip;
-
+		
+		if (edit_dist != rhs.edit_dist)
+			return rhs.edit_dist < edit_dist;
+		
 		return false;
 	}
 	else
@@ -62,16 +61,14 @@ bool InsertAlignmentGrade::operator<(const InsertAlignmentGrade& rhs)
 		}
 		else
 		{
-		  // if RHS has lower edit distance, RHS is BETTER (lhs < rhs)
-      if (rhs.edit_dist!= edit_dist)
-          return rhs.edit_dist < edit_dist;
-      // if RHS is LESS SPLICED, RHS is BETTER (lhs < rhs)
 			if (rhs.num_spliced != num_spliced)
-				return rhs.num_spliced < num_spliced;
+				return rhs.num_spliced < num_spliced;// if RHS is LESS SPLICED, RHS is BETTER (lhs < rhs)
 			
 			// Prefer shorter introns
 			if (longest_ref_skip != rhs.longest_ref_skip)
 				return rhs.longest_ref_skip < longest_ref_skip; // if RHS intron is SHORTER, RHS is BETTER (lhs < rhs)
+			
+			return rhs.edit_dist < edit_dist; // if RHS edit is LOWER, RHS is BETTER (lhs < rhs)
 		}
 	}
 	return false;

@@ -116,6 +116,7 @@ void driver(FILE* map_file)
 
 void print_usage()
 {
+//    fprintf(stderr, "Usage:   fix_map_ordering <map.bwtout> [<reads.fa/.fq>]\n");
   fprintf(stderr, "Usage:   fix_map_ordering <map.bwtout>\n");
 }
 

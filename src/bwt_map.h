@@ -292,7 +292,7 @@ public:
 	uint32_t observation_order(ReadID ID)
 	{
 		if (ID == 0)
-			return VMAXINT32;
+			return 0xFFFFFFFF;
 		return ID;
 	}
 	
@@ -443,10 +443,11 @@ public:
 		//_by_name.clear();
 		_by_id.clear();
 	}
-
-	// daehwan
+	
+private:
+	
 	// This is FNV-1, see http://en.wikipedia.org/wiki/Fowler_Noll_Vo_hash
-	static inline uint32_t hash_string(const char* __s)
+	inline uint32_t hash_string(const char* __s)
 	{
 		uint32_t hash = 0x811c9dc5;
 		for ( ; *__s; ++__s)
@@ -456,8 +457,6 @@ public:
 		}
 		return hash;
 	}
-	
-private:
 	
 	//IDTable _by_name;
 	uint32_t _next_id;

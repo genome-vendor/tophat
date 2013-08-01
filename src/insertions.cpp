@@ -61,12 +61,13 @@ void insertions_from_alignment(const BowtieHit& bh, InsertionSet& insertions){
 			itr->second += 1;
 		}
 		else{
-			assert(insertion.refid != VMAXINT32);
+			assert(insertion.refid != 0xFFFFFFFF);
 			insertions[insertion] = 1;
 		}
 	}
 	return;
 }
+
 
 /**
  * Print insertions in BED format.
