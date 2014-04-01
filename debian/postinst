@@ -6,10 +6,8 @@ VER="2.0.8"
 PKG_DIR=/usr/lib/${PKG}${VER}
 
 if [ "$1" = "configure" ]; then
-    if [ ! -e /usr/bin/tophat ]; then
-        for pathname in ${PKG_DIR}/bin/*; do
-            filename=`basename $pathname`
-            update-alternatives --install /usr/bin/${filename} ${filename} /usr/bin/${filename}${VER} 1
-        done
-    fi
+    for pathname in ${PKG_DIR}/bin/*; do
+        filename=`basename $pathname`
+        update-alternatives --install /usr/bin/${filename} ${filename} /usr/bin/${filename}${VER} 8
+    done
 fi
